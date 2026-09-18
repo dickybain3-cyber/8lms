@@ -1,0 +1,606 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Token warna disalin dari desain acuan (halaman siswa & admin yang
+  sudah jadi) supaya komponen yang ditulis dengan CSS biasa dan komponen
+  yang ditulis dengan kelas Tailwind memakai warna yang sama persis.
+  Nilai di sini HARUS sinkron dengan `tailwind.config.ts`.
+*/
+:root {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --accent: #3b82f6;
+  --secondary: #64748b;
+  --success: #10b981;
+  --danger: #ef4444;
+  --danger-light: #fee2e2;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text-main: #1e293b;
+  --text-muted: #94a3b8;
+  --sidebar: #1e293b;
+  --sidebar-dark: #0f172a;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text-main);
+}
+
+/* Fokus keyboard tetap terlihat jelas di semua elemen interaktif */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@layer components {
+  /* Kartu putih dengan angkat halus saat hover — dipakai di dashboard
+     siswa, daftar ujian, dan kartu statistik admin. */
+  .card-mewah {
+    @apply rounded-2xl border border-[--border] bg-white shadow-card transition-all duration-300;
+  }
+  .card-mewah:hover {
+    @apply -translate-y-0.5 shadow-card-hover;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-[--primary] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[--primary-hover] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-[--border] bg-white px-4 py-2.5 text-sm font-semibold text-[--secondary] transition-colors hover:bg-slate-50 hover:text-[--text-main];
+  }
+
+  .btn-logout {
+    @apply inline-flex items-center gap-2 rounded-xl border border-red-300 bg-[--danger-light] px-4 py-2.5 text-sm font-bold text-[--danger] transition-transform hover:scale-105 disabled:opacity-50;
+  }
+
+  /* Input & select seragam untuk semua form (login, filter, modal). */
+  .field {
+    @apply w-full rounded-xl border border-[--border] bg-white px-4 py-3 text-sm text-[--text-main] outline-none transition-colors placeholder:text-slate-400 focus:border-[--accent] focus:ring-4 focus:ring-blue-500/10;
+  }
+
+  .label-field {
+    @apply mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500;
+  }
+
+  .badge-ok {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600 ring-1 ring-emerald-200;
+  }
+
+  .badge-danger {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-600 ring-1 ring-red-200;
+  }
+
+  .badge-netral {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200;
+  }
+}
+
+/* Scrollbar tipis untuk daftar panjang (modal pilih nama, navigasi soal). */
+.scroll-halus::-webkit-scrollbar {
+  width: 6px;
+}
+.scroll-halus::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+@keyframes munculHalus {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animasi-muncul {
+  animation: munculHalus 0.35s ease-out;
+}
+
+/* =====================================================================
+   CETAK — kartu peserta, presensi, dan denah (/admin/denah)
+   =====================================================================
+
+   Pendekatannya "sembunyikan semua, lalu tampilkan satu": saat mencetak,
+   SELURUH isi halaman disembunyikan dengan `visibility: hidden`, lalu
+   hanya `.area-cetak` yang dimunculkan kembali dan ditarik ke pojok
+   kiri-atas kertas.
+
+   Kenapa `visibility`, bukan `display: none`? Karena `.area-cetak` berada
+   jauh di dalam pohon DOM (di bawah sidebar & header AdminShell). Kalau
+   induk-induknya di-`display: none`, anaknya ikut hilang dan tidak bisa
+   dimunculkan lagi. `visibility` bisa ditimpa kembali oleh anak, jadi
+   satu-satunya aturan ini cukup untuk semua bentuk halaman tanpa perlu
+   memindahkan komponen ke luar layout admin lewat portal.
+
+   Ukuran ditulis dalam MILIMETER, bukan piksel/rem: keluarannya kertas,
+   dan kartu peserta harus benar-benar muat 8 di satu lembar A4 supaya
+   memotongnya bisa lurus dengan pemotong kertas biasa.
+*/
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .area-cetak,
+  .area-cetak * {
+    visibility: visible;
+  }
+
+  .area-cetak {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  /* Warna latar & border WAJIB ikut tercetak — tanpa ini, bingkai kartu
+     hilang di sebagian besar pencetak dan kartunya jadi tidak bisa
+     dipotong lurus. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @page {
+    size: A4;
+    margin: 8mm;
+  }
+}
+
+/* --- Kartu peserta --------------------------------------------------- */
+
+.lembar-kartu {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4mm;
+}
+
+.kartu-peserta {
+  box-sizing: border-box;
+  height: 66mm;
+  padding: 4mm;
+  border: 0.4mm solid #1e293b;
+  border-radius: 2mm;
+  background: #fff;
+  color: #1e293b;
+  display: flex;
+  flex-direction: column;
+  /* Satu kartu tidak boleh terbelah dua halaman. */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.kartu-kepala {
+  display: flex;
+  align-items: center;
+  gap: 2.5mm;
+  border-bottom: 0.3mm solid #cbd5e1;
+  padding-bottom: 2mm;
+}
+
+.kartu-logo {
+  height: 9mm;
+  width: auto;
+  object-fit: contain;
+}
+
+.kartu-sekolah {
+  font-family: var(--font-serif), Poppins, sans-serif;
+  font-size: 3mm;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.kartu-kegiatan {
+  font-size: 2.6mm;
+  color: #64748b;
+  line-height: 1.3;
+}
+
+.kartu-isi {
+  display: flex;
+  flex: 1;
+  gap: 3mm;
+  padding-top: 2.5mm;
+}
+
+.kartu-identitas {
+  flex: 1;
+  min-width: 0;
+}
+
+.kartu-label {
+  font-size: 2.3mm;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.kartu-nama {
+  font-family: var(--font-serif), Poppins, sans-serif;
+  font-size: 4.2mm;
+  font-weight: 700;
+  line-height: 1.15;
+  margin-top: 0.8mm;
+  margin-bottom: 1.8mm;
+  /* Nama panjang dipotong dua baris, bukan melebar keluar kartu. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.kartu-tabel {
+  width: 100%;
+  font-size: 2.9mm;
+  border-collapse: collapse;
+}
+
+.kartu-tabel td {
+  padding: 0.4mm 0;
+  vertical-align: top;
+}
+
+.kartu-tabel td:first-child {
+  width: 16mm;
+  color: #94a3b8;
+}
+
+.kartu-mono {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-weight: 600;
+}
+
+/* Kode kursi — satu-satunya elemen besar di kartu ini. */
+.kartu-kursi {
+  width: 28mm;
+  flex-shrink: 0;
+  border-left: 0.3mm dashed #cbd5e1;
+  padding-left: 3mm;
+  text-align: center;
+}
+
+.kartu-kode {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 7mm;
+  font-weight: 800;
+  line-height: 1.05;
+  margin-top: 1mm;
+  letter-spacing: -0.02em;
+}
+
+.kartu-nomor {
+  font-size: 2.6mm;
+  color: #64748b;
+  margin-top: 1mm;
+}
+
+.kartu-kaki {
+  border-top: 0.3mm solid #e2e8f0;
+  padding-top: 1.5mm;
+  font-size: 2.2mm;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+/* --- Presensi & denah cetak ------------------------------------------ */
+
+.lembar-presensi {
+  page-break-after: always;
+  break-after: page;
+  padding-bottom: 6mm;
+}
+
+.lembar-presensi:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+.presensi-kepala {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  border-bottom: 0.5mm solid #1e293b;
+  padding-bottom: 2.5mm;
+  margin-bottom: 3mm;
+}
+
+.presensi-logo {
+  height: 12mm;
+  width: auto;
+  object-fit: contain;
+}
+
+.presensi-judul {
+  font-family: var(--font-serif), Poppins, sans-serif;
+  font-size: 4.5mm;
+  font-weight: 800;
+}
+
+.presensi-sub {
+  font-size: 3mm;
+  color: #64748b;
+}
+
+.presensi-ruang {
+  margin-left: auto;
+  font-family: var(--font-serif), Poppins, sans-serif;
+  font-size: 5mm;
+  font-weight: 800;
+}
+
+.presensi-tabel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 3mm;
+}
+
+.presensi-tabel th,
+.presensi-tabel td {
+  border: 0.25mm solid #94a3b8;
+  padding: 1.6mm 1.5mm;
+  text-align: left;
+}
+
+.presensi-tabel th {
+  background: #f1f5f9;
+  font-size: 2.7mm;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Baris tidak boleh terpotong, dan judul kolom diulang di tiap halaman —
+   tanpa ini, halaman kedua presensi jadi tabel tanpa kepala. */
+.presensi-tabel tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.presensi-tabel thead {
+  display: table-header-group;
+}
+
+.presensi-tabel .tengah {
+  text-align: center;
+}
+
+.presensi-tabel .mono {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+.presensi-tabel .ttd {
+  height: 7mm;
+}
+
+.presensi-kaki {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 6mm;
+  margin-top: 4mm;
+  font-size: 3mm;
+  color: #475569;
+}
+
+.presensi-ttd {
+  text-align: center;
+  width: 45mm;
+}
+
+.presensi-garis {
+  height: 14mm;
+  border-bottom: 0.25mm solid #475569;
+  margin-bottom: 1mm;
+}
+
+.denah-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3mm;
+}
+
+.denah-meja {
+  border: 0.25mm solid #94a3b8;
+  border-radius: 1.5mm;
+  padding: 2mm;
+  font-size: 2.8mm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.denah-nomor {
+  font-size: 2.4mm;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  margin-bottom: 1mm;
+}
+
+.denah-siswa {
+  line-height: 1.35;
+}
+
+.denah-kelas {
+  color: #64748b;
+}
+
+.denah-kaki {
+  margin-top: 4mm;
+  text-align: center;
+  font-size: 2.8mm;
+  color: #94a3b8;
+  border-top: 0.25mm dashed #cbd5e1;
+  padding-top: 2mm;
+}
+
+/* ============================================================
+   ISI SOAL BERFORMAT (editor kaya guru + tampilan siswa)
+   ============================================================
+
+   Dipakai dua tempat dengan kelas yang SAMA (`.isi-soal`):
+   `EditorKaya` di form guru, dan `KontenKaya` di layar siswa. Itu
+   disengaja — kalau gaya keduanya ditulis terpisah, guru akan
+   menyusun soal yang tampak rapi di form lalu menemukannya berbeda
+   di HP siswa, dan tidak ada cara mengetahuinya selain membuka
+   ujian sungguhan.
+
+   Tailwind Preflight menghapus margin paragraf dan penanda daftar
+   (list-style) dari SELURUH halaman. Untuk UI itu tepat, tapi di
+   sini isinya adalah teks yang ditulis manusia — tanpa aturan di
+   bawah, daftar bernomor yang diketik guru muncul tanpa nomor sama
+   sekali di layar siswa, dan antar paragraf tidak ada jarak. */
+
+.isi-soal > :first-child {
+  margin-top: 0;
+}
+.isi-soal > :last-child {
+  margin-bottom: 0;
+}
+
+.isi-soal p,
+.isi-soal div {
+  margin: 0 0 0.5em;
+}
+
+.isi-soal ul,
+.isi-soal ol {
+  margin: 0 0 0.5em;
+  padding-left: 1.5em;
+}
+
+.isi-soal ul {
+  list-style: disc outside;
+}
+
+.isi-soal ol {
+  list-style: decimal outside;
+}
+
+.isi-soal li {
+  margin-bottom: 0.2em;
+}
+
+.isi-soal b,
+.isi-soal strong {
+  font-weight: 700;
+}
+
+.isi-soal i,
+.isi-soal em {
+  font-style: italic;
+}
+
+.isi-soal u {
+  text-decoration: underline;
+}
+
+.isi-soal sub {
+  vertical-align: sub;
+  font-size: 0.75em;
+}
+
+.isi-soal sup {
+  vertical-align: super;
+  font-size: 0.75em;
+}
+
+/* Gambar yang ditempel guru di tengah teks.
+ 
+   `display: block` + `margin: auto` membuat gambar mengikuti perataan
+   yang dipilih guru (rata tengah/kanan) alih-alih menempel kiri
+   seperti elemen sebaris.
+ 
+   Batas tingginya `45svh`, bukan angka piksel. Di HP potret itu
+   kira-kira setengah layar: cukup besar untuk dibaca, tapi pilihan
+   jawabannya masih terlihat tanpa menggulir. `svh` (small viewport
+   height) dipakai supaya bilah alamat browser HP yang muncul-hilang
+   saat menggulir tidak membuat tinggi gambar — dan seluruh tata
+   letak di bawahnya — melompat-lompat.
+ 
+   `width: auto` menegaskan bahwa ketika `max-height` yang mengikat,
+   lebarnya ikut mengecil proporsional; tanpa ini gambar tinggi-kurus
+   bisa ikut teregang. */
+.gambar-isi-soal {
+  display: block;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  max-height: 45svh;
+  margin: 0.5em auto;
+  border-radius: 0.5rem;
+  cursor: zoom-in;
+  /* Isyarat bahwa gambar ini bisa diketuk. Tanpa penanda apa pun,
+     tidak ada alasan bagi siswa untuk menduga gambarnya bisa
+     diperbesar — dan gambar yang terlalu kecil untuk dibaca lalu
+     dianggap soal yang rusak. */
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.08);
+}
+
+/* Fallback untuk browser yang belum mendukung satuan svh (Android
+   WebView lama di HP murah yang banyak dipakai siswa). Ditaruh
+   SETELAH aturan svh supaya browser modern tetap memakai svh. */
+@supports not (height: 1svh) {
+  .gambar-isi-soal {
+    max-height: 45vh;
+  }
+}
+
+/* Gambar di dalam baris opsi/pernyataan: lebih pendek supaya deretan
+   opsi tetap terbaca sebagai daftar, bukan sebagai galeri foto. */
+.isi-soal-kecil .gambar-isi-soal {
+  max-height: 28svh;
+  margin: 0.4em auto;
+}
+
+@supports not (height: 1svh) {
+  .isi-soal-kecil .gambar-isi-soal {
+    max-height: 28vh;
+  }
+}
+
+/* ── Khusus editor guru ── */
+
+/* `contentEditable` tidak punya atribut `placeholder`. Teks bantuannya
+   dipasang sebagai pseudo-element supaya TIDAK ikut terkirim sebagai
+   isi soal — kalau dipasang sebagai node teks sungguhan, guru yang
+   langsung menekan Simpan akan menyimpan kalimat "Tulis pertanyaan…"
+   sebagai pertanyaannya. */
+.editor-kaya[data-kosong="1"]::before {
+  content: attr(data-placeholder);
+  color: rgb(15 23 42 / 0.3);
+  pointer-events: none;
+  display: block;
+}
+
+.editor-kaya {
+  cursor: text;
+  /* Tempelan dari Word bisa memuat tabel/baris yang jauh lebih lebar
+     dari kolom form. Tanpa ini, satu tempelan melebarkan seluruh
+     halaman admin dan memunculkan gulir horizontal. */
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.editor-kaya .gambar-isi-soal {
+  cursor: pointer;
+  /* Di editor, gambar yang sedang dipilih guru diberi garis emas lewat
+     :focus-within pada pembungkusnya — di sini cukup penanda bahwa
+     gambar bisa diklik untuk mengatur lebarnya. */
+  max-height: 20rem;
+}
