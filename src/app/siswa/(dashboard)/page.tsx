@@ -1,4 +1,4 @@
-import Link from "next/link";
+import TombolKerjakanUjian from "@/components/TombolKerjakanUjian";
 import { createClient } from "@/lib/supabase/server";
 import { formatWaktu } from "@/lib/ujian";
 
@@ -298,10 +298,7 @@ function MapelCard({ mapel }: { mapel: MapelRow }) {
         )}
       </div>
 
-      <Link href={`/siswa/ujian/${mapel.id}`} className="btn-primary">
-        <i className="fas fa-pen-to-square" aria-hidden />
-        Kerjakan
-      </Link>
+      <TombolKerjakanUjian mapelId={mapel.id} />
     </div>
   );
 }

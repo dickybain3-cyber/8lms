@@ -542,9 +542,7 @@ export default function LoginForm() {
                 />
               </div>
               <p className="mt-1.5 text-[0.72rem] text-slate-500">
-                Contoh: lahir 14 Mei 2012 → isi 14, pilih Mei, isi 2012.
-                Tanggal lahir dipakai sebagai pengaman, fungsinya sama seperti
-                kata sandi.
+                Masukkan tanggal hari ini (19 September 2026)
               </p>
             </div>
           )}
