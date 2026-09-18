@@ -1,7 +1,0 @@
-{
-  "/login/page": "app/login/page.js",
-  "/admin/nilai/page": "app/admin/nilai/page.js",
-  "/siswa/ujian/[mapelId]/page": "app/siswa/ujian/[mapelId]/page.js",
-  "/admin/page": "app/admin/page.js",
-  "/siswa/(dashboard)/page": "app/siswa/(dashboard)/page.js"
-}
