@@ -129,7 +129,7 @@ export default function ExamClient({
    *                      hitung mundur 3 detik
    */
   const [tahapKumpul, setTahapKumpul] = useState<
-    null | "kosong" | "belum-lengkap" | "final"
+    null | "kosong" | "belum-lengkap" | "peringatan" | "final"
   >(null);
   const [submitting, setSubmitting] = useState(false);
   const [waktuHabis, setWaktuHabis] = useState(false);
@@ -909,17 +909,18 @@ export default function ExamClient({
         )}
       </main>
 
-      {tahapKumpul && (
-        <DialogPengumpulan
-          tahap={tahapKumpul}
-          jumlahTerjawab={jumlahTerjawab}
-          jumlahSoal={soalList.length}
-          submitting={submitting}
-          onTutup={() => setTahapKumpul(null)}
-          onLanjut={() => setTahapKumpul("final")}
-          onKumpulkan={() => void konfirmasiSubmit()}
-        />
-      )}
+{tahapKumpul && (
+  <DialogPengumpulan
+    tahap={tahapKumpul}
+    jumlahTerjawab={jumlahTerjawab}
+    jumlahSoal={soalList.length}
+    submitting={submitting}
+    onTutup={() => setTahapKumpul(null)}
+    onLanjut={() => setTahapKumpul("final")}
+    onKumpulkan={() => setTahapKumpul("peringatan")}   // ← berubah
+    onKirim={() => void konfirmasiSubmit()}            // ← baru
+  />
+)}
     </div>
   );
 }
@@ -971,14 +972,16 @@ function DialogPengumpulan({
   onTutup,
   onLanjut,
   onKumpulkan,
+  onKirim,
 }: {
-  tahap: "kosong" | "belum-lengkap" | "final";
+  tahap: "kosong" | "belum-lengkap" | "final" | "peringatan";
   jumlahTerjawab: number;
   jumlahSoal: number;
   submitting: boolean;
   onTutup: () => void;
   onLanjut: () => void;
   onKumpulkan: () => void;
+  onKirim: () => void;
 }) {
   const [sisaDetik, setSisaDetik] = useState(3);
 
@@ -1111,6 +1114,62 @@ function DialogPengumpulan({
             </div>
           </>
         )}
+
+        {tahap === "peringatan" && (
+  <div className="-m-5 overflow-hidden rounded-2xl" role="alertdialog" aria-labelledby="judul-peringatan">
+    <div className="flex items-center gap-3 bg-danger px-5 py-4 text-white">
+      <span
+        aria-hidden
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/20 text-2xl font-bold"
+      >
+        !
+      </span>
+      <h2 id="judul-peringatan" className="font-serif text-lg font-bold leading-tight">
+        Peringatan: ini tidak bisa dibatalkan
+      </h2>
+    </div>
+
+    <div className="p-5">
+      <ul className="mb-5 space-y-2.5 text-sm leading-relaxed text-ink/80">
+        <li className="flex gap-2">
+          <span className="font-bold text-danger" aria-hidden>✕</span>
+          <span>
+            Kamu <strong>tidak bisa kembali</strong> ke soal dan tidak bisa
+            mengubah jawaban lagi.
+          </span>
+        </li>
+        <li className="flex gap-2">
+          <span className="font-bold text-danger" aria-hidden>✕</span>
+          <span>
+            Jawabanmu <strong>langsung terkirim</strong> ke guru saat kamu
+            menekan tombol merah di bawah.
+          </span>
+        </li>
+      </ul>
+
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onTutup}
+          disabled={submitting}
+          autoFocus
+          className="h-12 w-full rounded-xl bg-ink text-sm font-bold text-paper transition-colors active:bg-ink-light disabled:opacity-50 touch-manipulation"
+        >
+          Kembali Kerjakan
+        </button>
+        <button
+          type="button"
+          onClick={onKirim}
+          disabled={submitting}
+          className="h-12 w-full rounded-xl border-2 border-danger bg-white text-sm font-bold text-danger transition-colors active:bg-danger/10 disabled:opacity-60 touch-manipulation"
+        >
+          {submitting ? "Mengirim…" : "Tetap Kumpulkan"}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
       </div>
     </div>
   );
