@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{\"lib\\\\excel.ts -> exceljs\":{\"id\":\"lib\\\\excel.ts -> exceljs\",\"files\":[\"static/chunks/_app-pages-browser_node_modules_exceljs_dist_exceljs_min_js.js\"]}}"
+self.__REACT_LOADABLE_MANIFEST="{}"

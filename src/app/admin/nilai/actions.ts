@@ -6,7 +6,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSesiGuru, pastikanBolehKeJenjang } from "@/lib/admin-guard";
 import { isJenjangValid, type Jenjang } from "@/lib/jenjang";
 import {
-  overrideNilaiAdmin as overrideNilaiAdminData,
+  // overrideNilaiAdmin (data-layer) SENGAJA tidak diimpor lagi — lihat
+  // komentar di overrideNilaiAdmin() (action) di bawah: jalur override
+  // manual dimatikan total, termasuk di level ini.
   hitungUlangNilaiMapelAdmin as hitungUlangNilaiMapelAdminData,
   type KonteksAdmin,
 } from "@/lib/supabase/admin-multi";
@@ -64,71 +66,25 @@ export async function hitungUlangNilaiMapel(
 }
 
 /**
- * Override nilai manual satu siswa. Ditandai `is_override = true` supaya
- * beda dari hasil koreksi otomatis murni — dan supaya kalau nanti guru
- * pakai "Hitung Ulang Nilai" di atas, dia sadar itu akan menimpa override
- * manual ini (didokumentasikan di tombolnya, bukan dicegah — guru yang
- * memutuskan).
+ * DINONAKTIFKAN SENGAJA — Rekap Penilaian sekarang bersifat fixed/read-only.
+ *
+ * Dulu fungsi ini melakukan override nilai manual satu siswa (menimpa
+ * `total_skor` di tabel `nilai` dengan `is_override = true`). Sekarang
+ * SENGAJA dimatikan di level server ini, bukan cuma disembunyikan di UI
+ * (lihat NilaiTable.tsx) — supaya nilai benar-benar tidak bisa diubah
+ * siapa pun lewat jalur apa pun, termasuk kalau ada yang mencoba memanggil
+ * Server Action ini langsung (mis. lewat devtools) tanpa lewat tombol
+ * "Ubah" yang sudah dihapus dari UI.
+ *
+ * Fungsi tetap ada (tidak dihapus) supaya signature-nya tidak memutus
+ * pemanggil lama secara diam-diam — panggilan apa pun ke sini akan selalu
+ * gagal dengan pesan yang jelas, tidak pernah menyentuh database.
  */
-export async function overrideNilai(params: {
-  mapelId: string;
-  siswaId: string;
-  totalSkor: number;
-}): Promise<ActionResult> {
-  const { mapelId, siswaId, totalSkor } = params;
-  const supabase = createClient();
-
-  if (!Number.isFinite(totalSkor) || totalSkor < 0) {
-    return { error: "Nilai harus berupa angka 0 atau lebih." };
-  }
-
-  const { data: jawaban } = await supabase
-    .from("jawaban_siswa")
-    .select("submitted_at")
-    .eq("siswa_id", siswaId)
-    .eq("mapel_id", mapelId)
-    .maybeSingle();
-
-  if (!jawaban?.submitted_at) {
-    return {
-      error: "Siswa ini belum mengumpulkan ujian, belum bisa diberi nilai.",
-    };
-  }
-
-  const { data: soalList } = await supabase
-    .from("soal")
-    .select("skor")
-    .eq("mapel_id", mapelId);
-
-  const skorMaksimal = (soalList ?? []).reduce(
-    (sum, s) => sum + Number(s.skor),
-    0
-  );
-
-  if (totalSkor > skorMaksimal) {
-    return {
-      error: `Nilai tidak boleh melebihi skor maksimal mapel ini (${skorMaksimal}).`,
-    };
-  }
-
-  const { error } = await supabase.from("nilai").upsert(
-    {
-      siswa_id: siswaId,
-      mapel_id: mapelId,
-      total_skor: totalSkor,
-      is_override: true,
-      dihitung_at: new Date().toISOString(),
-    },
-    { onConflict: "siswa_id,mapel_id" }
-  );
-
-  if (error) {
-    return { error: "Gagal menyimpan nilai. Coba lagi." };
-  }
-
-  revalidatePath("/admin/nilai");
-  revalidatePath("/admin/statistik");
-  return { error: null };
+export async function overrideNilai(): Promise<ActionResult> {
+  return {
+    error:
+      "Nilai di Rekap Penilaian bersifat tetap dan tidak bisa diubah manual.",
+  };
 }
 
 /**
@@ -277,40 +233,18 @@ export async function resetUjianSiswa(params: {
 // sejak migrasi 0013_admin_lintas_jenjang_soal_nilai.sql).
 // ---------------------------------------------------------------------------
 
-export async function overrideNilaiAdmin(params: {
-  jenjang: Jenjang;
-  mapelId: string;
-  siswaId: string;
-  totalSkor: number;
-}): Promise<ActionResult> {
-  const { jenjang, mapelId, siswaId, totalSkor } = params;
-
-  if (!isJenjangValid(jenjang)) {
-    return { error: "Jenjang tidak valid." };
-  }
-
-  const sesi = await getSesiGuru();
-  const tidakBoleh = await pastikanBolehKeJenjang(sesi, jenjang);
-  if (tidakBoleh) return { error: tidakBoleh };
-
-  const konteks: KonteksAdmin = {
-    guruId: sesi.guruId,
-    nama: sesi.nama,
-    email: sesi.email,
-    jenjangSesi: sesi.jenjang,
+/**
+ * DINONAKTIFKAN SENGAJA — sama seperti `overrideNilai()` di atas, ini
+ * varian admin-nya. Rekap Penilaian sekarang fixed/read-only untuk semua
+ * pengguna, termasuk admin lintas jenjang, jadi jalur service_role ini
+ * pun dimatikan di sini, bukan cuma disembunyikan di UI. Tidak lagi
+ * memanggil `overrideNilaiAdminData` sama sekali.
+ */
+export async function overrideNilaiAdmin(): Promise<ActionResult> {
+  return {
+    error:
+      "Nilai di Rekap Penilaian bersifat tetap dan tidak bisa diubah manual.",
   };
-
-  const hasil = await overrideNilaiAdminData(
-    jenjang,
-    { mapelId, siswaId, totalSkor },
-    konteks
-  );
-
-  if (hasil.error) return hasil;
-
-  revalidatePath("/admin/nilai");
-  revalidatePath("/admin/statistik");
-  return { error: null };
 }
 
 export async function hitungUlangNilaiMapelAdmin(params: {

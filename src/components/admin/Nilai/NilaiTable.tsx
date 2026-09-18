@@ -3,10 +3,13 @@
 import { useMemo, useState, useTransition } from "react";
 import {
   hitungUlangNilaiMapel,
-  overrideNilai,
   resetUjianSiswa,
   hitungUlangNilaiMapelAdmin,
-  overrideNilaiAdmin,
+  // overrideNilai / overrideNilaiAdmin SENGAJA tidak diimpor lagi — nilai
+  // di Rekap Penilaian sekarang fixed/read-only, tidak boleh diubah
+  // manual oleh siapa pun. Server Action-nya sendiri sudah dimatikan
+  // total di src/app/admin/nilai/actions.ts, jadi menghapus tombol
+  // "Ubah" di sini bukan satu-satunya penjaga — ini lapisan UI-nya saja.
 } from "@/app/admin/nilai/actions";
 import BadgeJenjang from "@/components/admin/BadgeJenjang";
 import type { Jenjang } from "@/lib/jenjang";
@@ -119,23 +122,14 @@ function BarisSiswa({
   row,
   mapelId,
   jenjang,
-  isAdmin,
   soalList,
 }: {
   row: BarisNilai;
   mapelId: string;
   jenjang: Jenjang;
-  /** true kalau admin sedang melihat jenjang mana pun (termasuk jenjang
-   *  sesi login-nya sendiri) — menentukan lewat action mana override
-   *  ditulis. Lihat komentar di overrideNilaiAdmin()/hitungUlangNilaiMapelAdmin()
-   *  di src/app/admin/nilai/actions.ts untuk kenapa dua jalur ini ada. */
-  isAdmin: boolean;
   soalList: SoalRingkas[];
 }) {
   const [showDetail, setShowDetail] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [nilaiInput, setNilaiInput] = useState(String(row.totalSkor ?? 0));
-  const [pending, startTransition] = useTransition();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // Reset ujian menghapus jawaban & nilai secara permanen, jadi butuh
   // konfirmasi. Dibuat sebagai dua tombol di tempat (bukan window.confirm)
@@ -154,35 +148,6 @@ function BarisSiswa({
       });
       setKonfirmReset(false);
       if (hasil.error) setErrorMsg(hasil.error);
-    });
-  }
-
-  function simpan() {
-    setErrorMsg(null);
-    const parsed = Number(nilaiInput.replace(",", "."));
-    startTransition(async () => {
-      // Guru biasa tetap lewat overrideNilai() lama (cookie-bound, RLS) —
-      // itu masih benar untuk jenjang sesi login-nya sendiri. Admin selalu
-      // lewat overrideNilaiAdmin() (service_role + log manual), termasuk
-      // saat sedang melihat jenjang sesi login-nya sendiri, supaya satu
-      // jalur kode konsisten untuknya di jenjang mana pun yang dia lihat.
-      const result = isAdmin
-        ? await overrideNilaiAdmin({
-            jenjang,
-            mapelId,
-            siswaId: row.siswaId,
-            totalSkor: parsed,
-          })
-        : await overrideNilai({
-            mapelId,
-            siswaId: row.siswaId,
-            totalSkor: parsed,
-          });
-      if (result.error) {
-        setErrorMsg(result.error);
-      } else {
-        setEditing(false);
-      }
     });
   }
 
@@ -207,55 +172,16 @@ function BarisSiswa({
           )}
         </td>
         <td className="py-2.5 pr-3">
-          {editing ? (
-            <div className="flex items-center gap-1.5">
-              <input
-                type="text"
-                inputMode="decimal"
-                value={nilaiInput}
-                onChange={(e) => setNilaiInput(e.target.value)}
-                className="w-20 rounded border border-ink/15 px-2 py-1 text-sm outline-none focus:border-gold"
-              />
-              <button
-                type="button"
-                disabled={pending}
-                onClick={simpan}
-                className="rounded bg-ink px-2 py-1 text-xs font-medium text-paper hover:bg-ink-light disabled:opacity-50"
-              >
-                {pending ? "…" : "Simpan"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditing(false);
-                  setErrorMsg(null);
-                }}
-                className="text-xs text-ink/40 hover:text-ink"
-              >
-                Batal
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="font-serif text-sm text-ink">
-                {fmtSkor(row.totalSkor)}
+          <div className="flex items-center gap-2">
+            <span className="font-serif text-sm text-ink">
+              {fmtSkor(row.totalSkor)}
+            </span>
+            {row.isOverride && (
+              <span className="rounded-full bg-gold/15 px-1.5 py-0.5 text-[10px] font-medium text-gold-dark">
+                override
               </span>
-              {row.isOverride && (
-                <span className="rounded-full bg-gold/15 px-1.5 py-0.5 text-[10px] font-medium text-gold-dark">
-                  override
-                </span>
-              )}
-              {row.submitted && (
-                <button
-                  type="button"
-                  onClick={() => setEditing(true)}
-                  className="text-xs text-teal hover:underline"
-                >
-                  Ubah
-                </button>
-              )}
-            </div>
-          )}
+            )}
+          </div>
           {errorMsg && <p className="mt-1 text-xs text-danger">{errorMsg}</p>}
         </td>
         <td className="py-2.5 pr-3 text-right">
@@ -530,7 +456,6 @@ export default function NilaiTable({
                 row={row}
                 mapelId={mapelId}
                 jenjang={jenjang}
-                isAdmin={isAdmin}
                 soalList={soalList}
               />
             ))}
