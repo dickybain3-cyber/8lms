@@ -15,6 +15,11 @@ import {
   jedaSinkronAcakMs,
   jitterSubmitMs,
 } from "@/lib/autosave-lokal";
+import {
+  unduhPaketSoal,
+  bacaPaketSoal,
+  hapusPaketSoal,
+} from "@/lib/paket-soal-lokal";
 
 type SaveStatus = "tersimpan" | "menyimpan" | "menunggu" | "gagal";
 type StatusNavSoal = "terjawab" | "dilihat" | "belum-dilihat";
@@ -52,7 +57,7 @@ function jedaPingMs(): number {
 export default function ExamClient({
   mapel,
   siswaId,
-  soalList,
+  soalList: soalListDariServer,
   jawabanAwal,
   submittedAtAwal,
   sudahMulai,
@@ -72,6 +77,38 @@ export default function ExamClient({
   sudahMulai: boolean;
 }) {
   const router = useRouter();
+
+  /**
+   * SOAL: server dulu, paket lokal sebagai jaring pengaman.
+   *
+   * Nilai awalnya SELALU `soalListDariServer` — bukan hasil baca
+   * localStorage. Kalau state awal dibaca dari localStorage, render
+   * pertama di server (yang tidak punya localStorage) berbeda dari
+   * render pertama di browser, dan React membuang seluruh pohonnya lalu
+   * merender ulang: di halaman ujian itu terlihat sebagai soal yang
+   * berkedip sesaat setelah terbuka. Paket lokal baru dipakai di efek
+   * di bawah, dan hanya kalau server memang tidak mengirim apa-apa.
+   */
+  const [soalList, setSoalList] = useState<SoalSiswa[]>(soalListDariServer);
+  const [dariPaketLokal, setDariPaketLokal] = useState(false);
+
+  useEffect(() => {
+    if (soalListDariServer.length > 0) {
+      setSoalList(soalListDariServer);
+      setDariPaketLokal(false);
+      return;
+    }
+    // Server tidak mengirim soal — hampir selalu berarti RPC-nya gagal
+    // karena koneksi putus di tengah ujian, tepat saat halaman dimuat
+    // ulang. Paket yang diunduh saat menekan "Mulai Ujian" menyelamatkan
+    // keadaan ini: ujiannya lanjut, jawabannya tetap tersimpan lokal,
+    // dan tidak ada yang perlu memanggil pengawas.
+    const paket = bacaPaketSoal(siswaId, mapel.id);
+    if (paket && paket.length > 0) {
+      setSoalList(paket);
+      setDariPaketLokal(true);
+    }
+  }, [soalListDariServer, siswaId, mapel.id]);
 
   const [jawaban, setJawaban] = useState<Record<string, unknown>>(
     () => bacaJawabanLokal(siswaId, mapel.id) ?? jawabanAwal
@@ -104,6 +141,13 @@ export default function ExamClient({
   const [memulai, setMemulai] = useState(false);
   const [errorMulai, setErrorMulai] = useState<string | null>(null);
 
+  /** Kemajuan pengunduhan paket soal di layar konfirmasi mulai. */
+  const [unduhan, setUnduhan] = useState<{
+    fase: "idle" | "mengunduh" | "selesai";
+    selesai: number;
+    total: number;
+  }>({ fase: "idle", selesai: 0, total: 0 });
+
   const jawabanRef = useRef(jawaban);
   useEffect(() => {
     jawabanRef.current = jawaban;
@@ -132,11 +176,78 @@ export default function ExamClient({
     });
   }, [activeIndex, soalList]);
 
+  /**
+   * GULIR OTOMATIS KE SOAL — perbaikan utama sesi ini di sisi siswa.
+   *
+   * ── MASALAHNYA ──
+   *
+   * Tombol Sebelumnya/Berikutnya ada di bilah bawah yang melekat di
+   * layar, dan navigasi nomor soal ada di panel yang juga di bawah.
+   * Artinya setiap kali siswa berpindah soal, dia sedang berada di
+   * BAGIAN BAWAH halaman. React mengganti isi soalnya, tapi posisi
+   * gulir tidak ikut berpindah — jadi yang dilihat siswa setelah
+   * menekan "Berikutnya" adalah bagian TENGAH atau AKHIR soal
+   * berikutnya. Untuk soal pendek efeknya cuma membingungkan; untuk
+   * soal dengan teks bacaan panjang, siswa mendarat entah di mana dan
+   * harus menggulir ke atas dulu untuk tahu soal nomor berapa yang
+   * sedang dibuka. Dikalikan 40 soal, itu 40 kali gulir manual yang
+   * tidak perlu — dengan waktu yang sedang berjalan.
+   *
+   * ── KENAPA PAKAI ref + useEffect, BUKAN scroll LANGSUNG DI bukaSoal ──
+   *
+   * Saat `bukaSoal` berjalan, DOM masih memuat soal LAMA. Menggulir di
+   * situ berarti menggulir ke posisi elemen yang sebentar lagi diganti
+   * dan tingginya berbeda. Efek di bawah berjalan setelah React selesai
+   * memasang soal baru, jadi yang diukur adalah tinggi yang sungguhan.
+   *
+   * ── KENAPA TIDAK scrollIntoView SAJA ──
+   *
+   * Header ujian (judul mapel + hitung mundur) `sticky` di atas.
+   * `scrollIntoView` akan menempatkan soal tepat di batas atas viewport
+   * — yang artinya baris pertama soal bersembunyi DI BALIK header.
+   * Karena itu posisinya dihitung manual dan tinggi header dikurangkan.
+   */
+  const headerRef = useRef<HTMLElement>(null);
+  const areaSoalRef = useRef<HTMLDivElement>(null);
+  const perluGulirRef = useRef(false);
+
   function bukaSoal(idx: number) {
     if (idx < 0 || idx >= soalList.length) return;
     setActiveIndex(idx);
     setNavOpen(false);
+    perluGulirRef.current = true;
   }
+
+  useEffect(() => {
+    if (!perluGulirRef.current) return;
+    perluGulirRef.current = false;
+
+    const el = areaSoalRef.current;
+    if (!el) return;
+
+    const tinggiHeader = headerRef.current?.offsetHeight ?? 0;
+    // 12 px napas di bawah header supaya soal tidak menempel garis.
+    const target = Math.max(
+      0,
+      el.getBoundingClientRect().top + window.scrollY - tinggiHeader - 12
+    );
+
+    // Animasi halus hanya kalau jaraknya masuk akal DAN siswa tidak
+    // meminta pengurangan animasi di setelan perangkatnya. Untuk
+    // lompatan jauh (mis. dari soal 40 ke soal 1 lewat panel nomor),
+    // gulir animasi di HP kelas bawah bisa memakan lebih dari satu
+    // detik penuh dan terasa seperti aplikasi yang macet — lompat
+    // langsung justru terasa lebih cepat dan tidak ada yang hilang.
+    const jarak = Math.abs(window.scrollY - target);
+    const kurangiGerak =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    window.scrollTo({
+      top: target,
+      behavior: kurangiGerak || jarak > 2200 ? "auto" : "smooth",
+    });
+  }, [activeIndex]);
 
   function statusNavSoal(soal: SoalSiswa): StatusNavSoal {
     if (soalSudahTerjawab(soal, jawaban[soal.id])) return "terjawab";
@@ -191,10 +302,51 @@ export default function ExamClient({
     }
   }, [sudahMulai, submittedAt, sinkronWaktu]);
 
+  /**
+   * UNDUH SOAL SAAT MENEKAN "MULAI UJIAN".
+   *
+   * Urutannya penting dan sengaja dibuat begini:
+   *
+   *   1. Unduh dulu (soal ke localStorage, gambar ke cache browser).
+   *   2. BARU panggil `mulai_ujian` — RPC yang mengisi `mulai_at` dan
+   *      memulai hitung mundur.
+   *
+   * Kalau dibalik, siswa dengan koneksi lambat kehilangan 15-30 detik
+   * waktu ujiannya hanya untuk menunggu gambar selesai terunduh. Dengan
+   * urutan ini, waktu unduh ditanggung di luar jam ujian — persis
+   * alasan kenapa layar konfirmasi "Mulai Ujian" ada sejak awal.
+   *
+   * Kegagalan unduh TIDAK membatalkan ujian. Kalau localStorage penuh
+   * atau sebagian gambar gagal, ujiannya tetap dimulai seperti sebelum
+   * fitur ini ada. Yang hilang cuma lapisan pengamannya, dan itu tidak
+   * sebanding dengan menahan siswa di layar persiapan.
+   */
   async function tekanMulai() {
     setMemulai(true);
+    setErrorMulai(null);
+
+    if (soalList.length > 0) {
+      setUnduhan({ fase: "mengunduh", selesai: 0, total: 0 });
+      try {
+        const hasil = await unduhPaketSoal(
+          siswaId,
+          mapel.id,
+          soalList,
+          (selesai, total) => setUnduhan({ fase: "mengunduh", selesai, total })
+        );
+        setUnduhan({
+          fase: "selesai",
+          selesai: hasil.gambarBerhasil + hasil.gambarGagal,
+          total: hasil.gambarBerhasil + hasil.gambarGagal,
+        });
+      } catch {
+        setUnduhan({ fase: "selesai", selesai: 0, total: 0 });
+      }
+    }
+
     const ok = await sinkronWaktu();
     setMemulai(false);
+    setUnduhan({ fase: "idle", selesai: 0, total: 0 });
     if (ok) router.refresh();
   }
 
@@ -341,6 +493,11 @@ export default function ExamClient({
       }
 
       hapusJawabanLokal(siswaId, mapel.id);
+      // Paket soal ikut dibuang. Bukan untuk menghemat ruang (ukurannya
+      // kecil), tapi supaya naskah soal tidak tertinggal di HP siswa
+      // sesudah ujiannya selesai — di mana ia bisa dibaca ulang dan
+      // dibagikan ke kelas yang ujiannya belum mulai.
+      hapusPaketSoal(siswaId, mapel.id);
       setSubmittedAt(now);
 
       // Setelah terkumpul, siswa SELALU dikembalikan ke dashboard — baik
@@ -466,7 +623,11 @@ export default function ExamClient({
           </dl>
 
           <ul className="mb-5 space-y-1.5 text-left text-xs text-ink/60">
-            <li>• Hitung mundur berjalan sejak tombol di bawah ditekan.</li>
+            <li>
+              • Semua soal diunduh dulu ke HP-mu saat tombol di bawah ditekan,
+              jadi mengerjakannya tetap lancar walau sinyal naik-turun.
+            </li>
+            <li>• Hitung mundur baru berjalan setelah unduhan selesai.</li>
             <li>
               • Jawaban tersimpan otomatis, termasuk saat koneksi sempat
               terputus.
@@ -481,6 +642,43 @@ export default function ExamClient({
             <p className="mb-4 rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
               {errorMulai}
             </p>
+          )}
+
+          {/*
+            Bilah kemajuan unduhan. Ditampilkan HANYA saat proses berjalan —
+            dan angkanya ditulis apa adanya ("gambar 7 dari 23"), bukan
+            persentase saja. Siswa yang menunggu perlu bukti bahwa ada yang
+            bergerak; persentase yang lompat dari 0 ke 100 di ujung tidak
+            memberi bukti itu, dan layar yang tampak diam selama sepuluh
+            detik adalah layar yang tombolnya ditekan berulang kali.
+          */}
+          {memulai && (
+            <div className="mb-4 rounded-xl border border-teal/25 bg-teal/5 p-3.5 text-left">
+              <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink">
+                <i className="fas fa-cloud-arrow-down text-teal" aria-hidden />
+                {unduhan.fase === "mengunduh"
+                  ? "Mengunduh soal ke perangkatmu…"
+                  : "Menyiapkan waktu ujian…"}
+              </p>
+              <div className="h-1.5 overflow-hidden rounded-full bg-ink/10">
+                <div
+                  className="h-full rounded-full bg-teal transition-all duration-300"
+                  style={{
+                    width:
+                      unduhan.total > 0
+                        ? `${Math.round((unduhan.selesai / unduhan.total) * 100)}%`
+                        : unduhan.fase === "mengunduh"
+                          ? "12%"
+                          : "100%",
+                  }}
+                />
+              </div>
+              <p className="mt-1.5 text-[0.7rem] text-ink/50">
+                {unduhan.total > 0
+                  ? `Gambar ${unduhan.selesai} dari ${unduhan.total} — jangan tutup halaman ini.`
+                  : "Menyalin naskah soal — sebentar saja."}
+              </p>
+            </div>
           )}
 
           <button
@@ -505,7 +703,10 @@ export default function ExamClient({
 
   return (
     <div className="min-h-screen bg-paper">
-      <header className="sticky top-0 z-10 border-b border-ink/10 bg-paper/95 px-4 py-3 backdrop-blur sm:px-6">
+      <header
+        ref={headerRef}
+        className="sticky top-0 z-10 border-b border-ink/10 bg-paper/95 px-4 py-3 backdrop-blur sm:px-6"
+      >
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <p className="truncate font-serif text-base text-ink">{mapel.nama}</p>
@@ -601,6 +802,16 @@ export default function ExamClient({
                 <StatusSubmittedBanner submittedAt={submittedAt} />
               )}
 
+              {dariPaketLokal && !readOnly && (
+                <div className="mb-4 rounded-lg border border-teal/30 bg-teal/5 p-3.5 text-sm text-ink/80">
+                  <i className="fas fa-wifi mr-2 text-teal" aria-hidden />
+                  Koneksi ke server sedang bermasalah, jadi soal diambil dari
+                  salinan yang tadi sudah diunduh ke HP-mu. Kerjakan saja
+                  seperti biasa — jawabanmu tetap tersimpan dan akan dikirim
+                  begitu sinyalnya kembali.
+                </div>
+              )}
+
               {waktuHabis && submittedAt === null && (
                 <div className="mb-6 rounded-lg border border-gold/30 bg-gold/5 p-4 text-sm text-ink/80">
                   Waktu ujian sudah habis — jawabanmu sedang dikumpulkan
@@ -615,7 +826,10 @@ export default function ExamClient({
               )}
 
               {soalAktif && (
-                <div className="rounded-lg border border-ink/10 bg-white p-4 sm:p-5">
+                <div
+                  ref={areaSoalRef}
+                  className="rounded-lg border border-ink/10 bg-white p-4 sm:p-5"
+                >
                   <div className="mb-3 flex items-center gap-2">
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-paper-dark text-xs font-medium text-ink/60">
                       {activeIndex + 1}

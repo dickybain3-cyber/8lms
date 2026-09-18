@@ -3,11 +3,36 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import {
+  emailGuruDariUsername,
+  nipValid,
+  normalkanUsername,
+  PASSWORD_AWAL_GURU,
+} from "@/lib/akun";
+
+/**
+ * ── REVISI BESAR SESI INI: GURU LOGIN PAKAI NIP, BUKAN EMAIL ──
+ *
+ * File ini sebelumnya membuat akun guru dengan EMAIL ASLI sebagai
+ * identitas login. Itu diganti total: identitas login guru sekarang
+ * adalah NIP (kolom baru `guru.nip`/`guru.username`, migrasi
+ * `0015_guru_nip_username.sql`), dan email yang dipakai Supabase Auth
+ * di baliknya dirakit otomatis — guru tidak pernah melihatnya. Alasan
+ * lengkapnya ada di komentar migrasi 0015 dan di `src/lib/akun.ts`.
+ *
+ * Password akun guru baru SERAGAM (`PASSWORD_AWAL_GURU`, "guru123456"),
+ * BUKAN acak per-akun seperti sebelumnya — permintaan eksplisit.
+ * Konsekuensinya: siapa pun yang tahu NIP seorang guru bisa login
+ * sebagai guru itu sampai passwordnya diganti. Tombol reset password
+ * tetap memakai password ACAK (lihat `resetPasswordGuru`) supaya ada
+ * jalan mengeraskan satu akun tertentu kapan pun dibutuhkan.
+ */
 
 export type ImportGuruInputRow = {
-  nomorBaris: number; // nomor baris asli di CSV (1-based, header tidak dihitung) — untuk pesan error yang bisa ditelusuri
+  nomorBaris: number;
+  no?: string | number;
   nama: string;
-  email: string;
+  nip: string;
 };
 
 export type ImportGuruRowResult =
@@ -15,77 +40,19 @@ export type ImportGuruRowResult =
       status: "berhasil";
       nomorBaris: number;
       nama: string;
-      email: string;
+      nip: string;
+      username: string;
       password: string;
     }
   | {
       status: "dilewati";
       nomorBaris: number;
       nama: string;
-      email: string;
+      nip: string;
       alasan: string;
     };
 
-/**
- * Generate password acak (12 karakter, campuran huruf+angka, tanpa
- * karakter ambigu 0/O/1/l/I) — sama seperti `importSiswaBatch`, acak
- * per-guru (bukan seragam) supaya satu password bocor tidak membuka
- * akses ke seluruh akun guru yang diimport sekaligus.
- */
-function generatePassword(): string {
-  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < 12; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
-}
-
-function emailValid(email: string): boolean {
-  // Validasi minimal, cukup untuk menyaring salah ketik yang jelas
-  // (bukan validasi RFC 5322 penuh) — Supabase Auth sendiri yang jadi
-  // sumber kebenaran akhir soal format email valid.
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-/**
- * Proses satu batch import guru. Pola sama persis dengan
- * `importSiswaBatch` (`/admin/siswa/actions.ts`): validasi per baris ->
- * `auth.admin.createUser` (service role) -> insert baris `guru`, dengan
- * rollback `admin.deleteUser` kalau insert baris `guru` gagal setelah
- * akun auth berhasil dibuat.
- *
- * Beda dari import siswa:
- * - Guru login pakai EMAIL ASLI (cek `LoginForm.tsx` tab Admin/Guru —
- *   `identifier` langsung dipakai sebagai email, tidak ditempeli suffix
- *   apa pun), jadi tidak ada email sintetis dan tidak ada kolom
- *   `username` (tabel `guru` memang tidak punya kolom itu, lihat
- *   `0001_init.sql`).
- * - Tidak ada kolom `kelas` — guru tidak terikat ke satu kelas.
- * - Validasi keunikan dicek ke `auth.users` (lewat percobaan
- *   `createUser`, yang akan gagal dengan pesan jelas kalau email sudah
- *   terdaftar) alih-alih tabel `guru` sendiri, karena email adalah
- *   identitas login-nya (unik di `auth.users`, bukan di kolom `guru`).
- *
- * Siapa yang boleh menjalankan import guru? Keputusan Sesi 7: SAMA
- * seperti import siswa — "siapa saja yang sudah jadi guru login" boleh
- * menjalankan, BUKAN dibatasi ke guru pertama/owner. Alasan: skema saat
- * ini tidak punya kolom role/peringkat di tabel `guru` (semua guru yang
- * ada di tabel itu setara hak aksesnya, lihat RLS di
- * `0005_rls_policies.sql`), jadi membatasi ke "guru pertama" berarti
- * menambah konsep baru (mis. kolom `is_owner` atau bergantung ke urutan
- * `created_at`, yang rapuh kalau baris pertama pernah dihapus) yang
- * belum diminta eksplisit oleh spec. Kalau nanti sekolah butuh jenjang
- * hak akses (mis. hanya kepala sekolah yang boleh import guru baru),
- * ini titik yang tepat untuk direvisit — dicatat di PROMPT-SESI-8.md.
- */
-export async function importGuruBatch(
-  rows: ImportGuruInputRow[]
-): Promise<ImportGuruRowResult[]> {
-  // Pastikan pemanggil benar-benar guru yang login — service role di
-  // bawah ini melewati RLS sepenuhnya, jadi pengecekan ini WAJIB
-  // dilakukan manual di sini, bukan diserahkan ke RLS seperti action lain.
-  const sessionSupabase = createClient();
+async function pastikanPemanggilGuru(sessionSupabase: ReturnType<typeof createClient>) {
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
@@ -94,13 +61,27 @@ export async function importGuruBatch(
     .select("id")
     .eq("auth_id", user?.id ?? "")
     .maybeSingle();
+  return guruRow;
+}
+
+/**
+ * Import guru dari Excel (lihat `src/lib/excel.ts`). Kolom yang dibaca:
+ * No (diabaikan, cuma kenyamanan mengisi template), Nama, NIP. Username
+ * dan password ditentukan OTOMATIS dari NIP — tidak diminta dari file,
+ * persis permintaan: "username = NIP, password = guru123456".
+ */
+export async function importGuruBatch(
+  rows: ImportGuruInputRow[]
+): Promise<ImportGuruRowResult[]> {
+  const sessionSupabase = createClient();
+  const guruRow = await pastikanPemanggilGuru(sessionSupabase);
 
   if (!guruRow) {
     return rows.map((r) => ({
       status: "dilewati" as const,
       nomorBaris: r.nomorBaris,
       nama: r.nama,
-      email: r.email,
+      nip: String(r.nip ?? ""),
       alasan: "Ditolak: hanya guru/admin yang login yang boleh import akun.",
     }));
   }
@@ -113,53 +94,79 @@ export async function importGuruBatch(
       status: "dilewati" as const,
       nomorBaris: r.nomorBaris,
       nama: r.nama,
-      email: r.email,
+      nip: String(r.nip ?? ""),
       alasan:
         err instanceof Error ? err.message : "Konfigurasi server tidak lengkap.",
     }));
   }
 
   const results: ImportGuruRowResult[] = [];
-  const emailDipakaiDiBatchIni = new Set<string>();
+  const usernameDipakaiDiBatchIni = new Set<string>();
 
   for (const row of rows) {
-    const nama = row.nama.trim();
-    const email = row.email.trim().toLowerCase();
+    const nama = String(row.nama ?? "").trim();
+    // NIP dari Excel sering ikut format angka murni atau ada spasi
+    // pemisah grup ("1965 0412 ..."). Spasinya dibuang di sini; validasi
+    // panjang/digit berlaku pada hasil yang sudah dibersihkan.
+    const nip = String(row.nip ?? "").trim().replace(/\s+/g, "");
 
-    if (!nama || !email) {
+    if (!nama || !nip) {
       results.push({
         status: "dilewati",
         nomorBaris: row.nomorBaris,
         nama,
-        email,
-        alasan: "Data tidak lengkap (nama/email ada yang kosong), dilewati.",
+        nip,
+        alasan: "Data tidak lengkap (nama/NIP ada yang kosong), dilewati.",
       });
       continue;
     }
 
-    if (!emailValid(email)) {
+    if (!nipValid(nip)) {
       results.push({
         status: "dilewati",
         nomorBaris: row.nomorBaris,
         nama,
-        email,
-        alasan: `Format email '${email}' tidak valid, dilewati.`,
+        nip,
+        alasan: `NIP '${nip}' tidak valid (harus 8-25 digit angka), dilewati.`,
       });
       continue;
     }
 
-    if (emailDipakaiDiBatchIni.has(email)) {
+    const username = normalkanUsername(nip);
+
+    if (usernameDipakaiDiBatchIni.has(username)) {
       results.push({
         status: "dilewati",
         nomorBaris: row.nomorBaris,
         nama,
-        email,
-        alasan: `Email '${email}' dobel di dalam batch ini, dilewati.`,
+        nip,
+        alasan: `NIP '${nip}' dobel di dalam file ini, dilewati.`,
       });
       continue;
     }
 
-    const password = generatePassword();
+    // Cek dobel dengan guru yang SUDAH ADA di database sebelum mencoba
+    // createUser, supaya pesan errornya jelas ("NIP sudah dipakai guru
+    // lain") bukan pesan mentah Supabase Auth soal email terdaftar.
+    const { data: nipSudahAda } = await admin
+      .from("guru")
+      .select("nama")
+      .eq("username", username)
+      .maybeSingle();
+
+    if (nipSudahAda) {
+      results.push({
+        status: "dilewati",
+        nomorBaris: row.nomorBaris,
+        nama,
+        nip,
+        alasan: `NIP '${nip}' sudah dipakai guru lain (${nipSudahAda.nama}), dilewati.`,
+      });
+      continue;
+    }
+
+    const email = emailGuruDariUsername(username);
+    const password = PASSWORD_AWAL_GURU;
 
     const { data: created, error: createError } =
       await admin.auth.admin.createUser({
@@ -173,7 +180,7 @@ export async function importGuruBatch(
         status: "dilewati",
         nomorBaris: row.nomorBaris,
         nama,
-        email,
+        nip,
         alasan: `Gagal membuat akun auth: ${
           createError?.message ?? "tidak diketahui"
         }.`,
@@ -184,6 +191,8 @@ export async function importGuruBatch(
     const { error: insertError } = await admin.from("guru").insert({
       auth_id: created.user.id,
       nama,
+      nip,
+      username,
     });
 
     if (insertError) {
@@ -197,24 +206,23 @@ export async function importGuruBatch(
         status: "dilewati",
         nomorBaris: row.nomorBaris,
         nama,
-        email,
+        nip,
         alasan: `Gagal menyimpan baris guru: ${insertError.message}.${rollbackMsg}`,
       });
       continue;
     }
 
-    emailDipakaiDiBatchIni.add(email);
+    usernameDipakaiDiBatchIni.add(username);
     results.push({
       status: "berhasil",
       nomorBaris: row.nomorBaris,
       nama,
-      email,
+      nip,
+      username,
       password,
     });
   }
 
-  // Dicatat manual, pola identik dengan importSiswaBatch — lihat komentar
-  // di sana / poin 3 di 0009_log_aktivitas.sql.
   const jumlahBerhasil = results.filter((r) => r.status === "berhasil").length;
   const jumlahDilewati = results.filter((r) => r.status === "dilewati").length;
   const { error: logError } = await sessionSupabase.rpc(
@@ -230,13 +238,109 @@ export async function importGuruBatch(
       },
     }
   );
-  if (logError) {
-    console.error("Gagal mencatat log import_guru:", logError);
-  }
+  if (logError) console.error("Gagal mencatat log import_guru:", logError);
 
   revalidatePath("/admin/guru");
   revalidatePath("/admin/log");
   return results;
+}
+
+export type TambahGuruManualResult =
+  | { success: true; nama: string; username: string; password: string }
+  | { success: false; error: string };
+
+/**
+ * Tambah SATU guru lewat form manual (bukan Excel) — poin 2 sisi admin.
+ * Bidangnya persis yang diminta: nama, NIP; username dan password
+ * diturunkan otomatis (username = NIP, password = "guru123456"), tidak
+ * diminta dari form supaya tidak ada peluang admin mengetik username
+ * yang berbeda dari NIP-nya sendiri secara tidak sengaja.
+ */
+export async function tambahGuruManual(
+  nama: string,
+  nip: string
+): Promise<TambahGuruManualResult> {
+  const sessionSupabase = createClient();
+  const guruRow = await pastikanPemanggilGuru(sessionSupabase);
+  if (!guruRow) {
+    return {
+      success: false,
+      error: "Ditolak: hanya guru/admin yang login yang boleh menambah akun.",
+    };
+  }
+
+  const namaBersih = nama.trim();
+  const nipBersih = nip.trim().replace(/\s+/g, "");
+
+  if (!namaBersih) return { success: false, error: "Nama tidak boleh kosong." };
+  if (!nipValid(nipBersih)) {
+    return {
+      success: false,
+      error: "NIP tidak valid — harus 8 sampai 25 digit angka.",
+    };
+  }
+
+  const username = normalkanUsername(nipBersih);
+
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Konfigurasi server tidak lengkap.",
+    };
+  }
+
+  const { data: nipSudahAda } = await admin
+    .from("guru")
+    .select("nama")
+    .eq("username", username)
+    .maybeSingle();
+  if (nipSudahAda) {
+    return {
+      success: false,
+      error: `NIP ini sudah dipakai guru lain (${nipSudahAda.nama}).`,
+    };
+  }
+
+  const email = emailGuruDariUsername(username);
+  const { data: created, error: createError } = await admin.auth.admin.createUser(
+    { email, password: PASSWORD_AWAL_GURU, email_confirm: true }
+  );
+  if (createError || !created?.user) {
+    return {
+      success: false,
+      error: `Gagal membuat akun auth: ${createError?.message ?? "tidak diketahui"}.`,
+    };
+  }
+
+  const { error: insertError } = await admin.from("guru").insert({
+    auth_id: created.user.id,
+    nama: namaBersih,
+    nip: nipBersih,
+    username,
+  });
+
+  if (insertError) {
+    await admin.auth.admin.deleteUser(created.user.id);
+    return {
+      success: false,
+      error: `Gagal menyimpan data guru: ${insertError.message}.`,
+    };
+  }
+
+  const { error: logError } = await sessionSupabase.rpc("catat_log_aktivitas", {
+    p_aksi: "tambah_guru_manual",
+    p_entitas: "guru",
+    p_entitas_id: created.user.id,
+    p_detail: { nama: namaBersih, username },
+  });
+  if (logError) console.error("Gagal mencatat log tambah_guru_manual:", logError);
+
+  revalidatePath("/admin/guru");
+  revalidatePath("/admin/log");
+  return { success: true, nama: namaBersih, username, password: PASSWORD_AWAL_GURU };
 }
 
 export type ResetPasswordResult =
@@ -244,27 +348,23 @@ export type ResetPasswordResult =
   | { success: false; error: string };
 
 /**
- * Reset password SATU akun guru (Sesi 11) — pasangan `resetPasswordSiswa`
- * di `/admin/siswa/actions.ts`, lihat komentar panjang di sana untuk
- * alasan desain (kenapa pola auth/password disalin bukan diekstrak,
- * kenapa tidak butuh rollback seperti import). Beda satu-satunya: entitas
- * `guru` tidak punya kolom `username` (guru login pakai email asli dari
- * `auth.users`), jadi detail log & pesan pakai email hasil query balik ke
- * `auth.users` lewat `admin.auth.admin.getUserById`, bukan kolom tabel
- * `guru` sendiri.
+ * Password ACAK — khusus reset, sengaja berbeda dari password awal
+ * seragam. Kalau reset ikut memakai `PASSWORD_AWAL_GURU`, tombol
+ * "Reset Password" tidak berguna sebagai jalan mengeraskan satu akun
+ * (hasilnya balik ke password yang sama-sama diketahui semua orang).
  */
+function generatePasswordAcak(): string {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
 export async function resetPasswordGuru(
   guruId: string
 ): Promise<ResetPasswordResult> {
   const sessionSupabase = createClient();
-  const {
-    data: { user },
-  } = await sessionSupabase.auth.getUser();
-  const { data: guruRow } = await sessionSupabase
-    .from("guru")
-    .select("id")
-    .eq("auth_id", user?.id ?? "")
-    .maybeSingle();
+  const guruRow = await pastikanPemanggilGuru(sessionSupabase);
 
   if (!guruRow) {
     return {
@@ -285,7 +385,7 @@ export async function resetPasswordGuru(
 
   const { data: targetGuru, error: guruError } = await admin
     .from("guru")
-    .select("id, nama, auth_id")
+    .select("id, nama, auth_id, username")
     .eq("id", guruId)
     .maybeSingle();
 
@@ -293,7 +393,7 @@ export async function resetPasswordGuru(
     return { success: false, error: "Akun guru tidak ditemukan." };
   }
 
-  const password = generatePassword();
+  const password = generatePasswordAcak();
   const { error: updateError } = await admin.auth.admin.updateUserById(
     targetGuru.auth_id,
     { password }
@@ -306,32 +406,16 @@ export async function resetPasswordGuru(
     };
   }
 
-  // Gagal-lunak (bukan wajib berhasil): kalau lookup email gagal, log
-  // tetap dicatat tanpa email — reset password-nya sendiri sudah sukses
-  // di atas dan tidak boleh dianggap gagal cuma karena detail log kurang
-  // lengkap.
-  let email: string | null = null;
-  try {
-    const { data: authUser } = await admin.auth.admin.getUserById(
-      targetGuru.auth_id
-    );
-    email = authUser?.user?.email ?? null;
-  } catch {
-    email = null;
-  }
-
   const { error: logError } = await sessionSupabase.rpc(
     "catat_log_aktivitas",
     {
       p_aksi: "reset_password_guru",
       p_entitas: "guru",
       p_entitas_id: targetGuru.id,
-      p_detail: { nama: targetGuru.nama, email },
+      p_detail: { nama: targetGuru.nama, username: targetGuru.username },
     }
   );
-  if (logError) {
-    console.error("Gagal mencatat log reset_password_guru:", logError);
-  }
+  if (logError) console.error("Gagal mencatat log reset_password_guru:", logError);
 
   revalidatePath("/admin/log");
   return { success: true, password };
@@ -339,62 +423,22 @@ export async function resetPasswordGuru(
 
 export type DampakHapusGuru = { jumlahEventDibuat: number };
 
-/**
- * Hitung dampak sebelum akun guru dihapus (Sesi 13, pasangan
- * `hitungDampakHapusSiswa` — lihat komentar panjang di sana untuk alasan
- * dipanggil per-klik, bukan pra-hitung semua baris saat render).
- *
- * Beda penting dari siswa: `event.created_by` punya FK `references guru
- * (id) on delete set null` (0002_event_mapel.sql) — BUKAN cascade. Jadi
- * menghapus guru TIDAK menghapus event yang pernah dia buat, cuma
- * melepas kaitan "dibuat oleh"-nya jadi kosong. Dampaknya bersifat
- * informasional ("guru ini pernah membuat N event"), bukan peringatan
- * destruktif seperti versi siswa — dibedakan lewat field `destruktif`
- * yang dihitung di `AkunAksiButtons.tsx`, bukan di sini.
- */
 export async function hitungDampakHapusGuru(
   guruId: string
 ): Promise<DampakHapusGuru> {
   const supabase = createClient();
-
   const { count: jumlahEventDibuat } = await supabase
     .from("event")
     .select("id", { count: "exact", head: true })
     .eq("created_by", guruId);
-
   return { jumlahEventDibuat: jumlahEventDibuat ?? 0 };
 }
 
 export type HapusAkunResult = { success: true } | { success: false; error: string };
 
-/**
- * Hapus SATU akun guru permanen (Sesi 13, kandidat #1 dari
- * PROMPT-SESI-13.md). Pola inti sama dengan `deleteSiswa` (satu
- * panggilan `admin.auth.admin.deleteUser`, cascade FK `guru.auth_id ->
- * auth.users` menghapus baris `guru` otomatis, tidak ada rollback yang
- * perlu ditangani, log dicatat manual) — lihat komentar lengkap di
- * `admin/siswa/actions.ts` untuk alasan pola ini, tidak diulang di sini.
- *
- * Beda dari `deleteSiswa`: ADA pengecekan tambahan — guru tidak boleh
- * menghapus akunnya SENDIRI yang sedang dipakai login saat itu juga
- * (kalau berhasil, sesi login yang sedang berjalan langsung jadi tidak
- * valid di tengah aksi, pengalaman yang membingungkan dan berisiko
- * mengunci diri sendiri dari sistem kalau kebetulan itu satu-satunya
- * akun guru yang ada). Guru lain yang harus menjalankan penghapusan ini
- * — tidak ada override "paksa hapus akun sendiri" yang disediakan,
- * sengaja, supaya tidak ada jalan pintas untuk kondisi yang berisiko
- * mengunci akses admin.
- */
 export async function deleteGuru(guruId: string): Promise<HapusAkunResult> {
   const sessionSupabase = createClient();
-  const {
-    data: { user },
-  } = await sessionSupabase.auth.getUser();
-  const { data: guruRow } = await sessionSupabase
-    .from("guru")
-    .select("id")
-    .eq("auth_id", user?.id ?? "")
-    .maybeSingle();
+  const guruRow = await pastikanPemanggilGuru(sessionSupabase);
 
   if (!guruRow) {
     return {
@@ -423,24 +467,12 @@ export async function deleteGuru(guruId: string): Promise<HapusAkunResult> {
 
   const { data: targetGuru, error: guruError } = await admin
     .from("guru")
-    .select("id, nama, auth_id")
+    .select("id, nama, auth_id, username")
     .eq("id", guruId)
     .maybeSingle();
 
   if (guruError || !targetGuru) {
     return { success: false, error: "Akun guru tidak ditemukan." };
-  }
-
-  // Gagal-lunak sama seperti resetPasswordGuru: lookup email cuma untuk
-  // detail log, bukan syarat sukses-tidaknya penghapusan.
-  let email: string | null = null;
-  try {
-    const { data: authUser } = await admin.auth.admin.getUserById(
-      targetGuru.auth_id
-    );
-    email = authUser?.user?.email ?? null;
-  } catch {
-    email = null;
   }
 
   const { error: deleteError } = await admin.auth.admin.deleteUser(
@@ -459,12 +491,10 @@ export async function deleteGuru(guruId: string): Promise<HapusAkunResult> {
       p_aksi: "hapus_guru",
       p_entitas: "guru",
       p_entitas_id: targetGuru.id,
-      p_detail: { nama: targetGuru.nama, email },
+      p_detail: { nama: targetGuru.nama, username: targetGuru.username },
     }
   );
-  if (logError) {
-    console.error("Gagal mencatat log hapus_guru:", logError);
-  }
+  if (logError) console.error("Gagal mencatat log hapus_guru:", logError);
 
   revalidatePath("/admin/guru");
   revalidatePath("/admin/log");

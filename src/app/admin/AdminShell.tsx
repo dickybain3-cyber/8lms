@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import LogoutButton from "@/components/LogoutButton";
 import JenjangSwitcherGlobal from "@/components/admin/JenjangSwitcherGlobal";
+import NavigasiProgress from "@/components/admin/NavigasiProgress";
 import { LOGO_URL, SEKOLAH } from "@/lib/branding";
 import { JENJANG_LABEL, type Jenjang } from "@/lib/jenjang";
 
@@ -159,6 +160,7 @@ export default function AdminShell({
 
   return (
     <div className="min-h-screen bg-paper">
+      <NavigasiProgress />
       {/* Topbar khusus layar kecil */}
       <div className="sticky top-0 z-40 flex h-14 items-center gap-3 bg-ink px-4 shadow-lg lg:hidden">
         <button

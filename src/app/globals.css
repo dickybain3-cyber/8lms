@@ -82,6 +82,58 @@ body {
   .badge-netral {
     @apply inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200;
   }
+
+  /* ── Tambahan sesi revisi ──────────────────────────────────────────
+     Tiga utilitas kecil untuk mempercantik panel admin TANPA menambah
+     beban: semuanya murni CSS (tidak ada gambar, tidak ada JS, tidak
+     ada font baru), jadi tidak ada satu pun permintaan jaringan
+     tambahan. Ini sengaja: panel admin dibuka dari komputer TU yang
+     sering tua, dan "mewah" di sana berarti terasa rapi & responsif,
+     bukan penuh efek yang membuat scroll tersendat. */
+
+  /* Baris tabel yang menyala halus saat disorot — membantu mata
+     mengikuti satu baris di tabel 200 siswa yang kolomnya berjauhan. */
+  .baris-tabel {
+    @apply border-b border-ink/5 transition-colors last:border-0 hover:bg-slate-50/80;
+  }
+
+  /* Kepala tabel lengket: header kolom tetap terlihat saat menggulir
+     daftar panjang, tanpa perlu komponen tabel virtual apa pun. */
+  .thead-lengket {
+    @apply sticky top-0 z-10 bg-paper-dark/95 backdrop-blur;
+  }
+}
+
+/* Kilau skeleton saat memuat. Dipakai `SkeletonTabelAdmin`; dituliskan
+   sebagai keyframes sendiri (bukan `animate-pulse` Tailwind) supaya
+   geraknya menyapu dari kiri ke kanan — arah baca — sehingga terbaca
+   sebagai "sedang dimuat", bukan sebagai kedipan yang bikin gelisah. */
+@keyframes kilauSkeleton {
+  0% {
+    background-position: -300px 0;
+  }
+  100% {
+    background-position: 300px 0;
+  }
+}
+
+.skeleton-kilau {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 600px 100%;
+  animation: kilauSkeleton 1.4s linear infinite;
+}
+
+/* Hormati setelan "kurangi animasi" di perangkat. Siswa/guru yang
+   mengaktifkannya biasanya punya alasan (mabuk gerak, gangguan
+   vestibular), dan indikator loading yang berkedip terus adalah salah
+   satu pemicu paling umum. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-kilau {
+    animation: none;
+  }
+  .animasi-muncul {
+    animation: none;
+  }
 }
 
 /* Scrollbar tipis untuk daftar panjang (modal pilih nama, navigasi soal). */

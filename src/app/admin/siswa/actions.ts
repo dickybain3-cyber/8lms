@@ -3,12 +3,27 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import {
+  emailSiswaDariUsername,
+  normalkanUsername,
+  passwordDariTanggalISO,
+} from "@/lib/akun";
 
 export type ImportSiswaInputRow = {
-  nomorBaris: number; // nomor baris asli di CSV (1-based, header tidak dihitung) — untuk pesan error yang bisa ditelusuri guru
+  nomorBaris: number; // nomor baris asli di file (1-based, header tidak dihitung) — untuk pesan error yang bisa ditelusuri guru
   nama: string;
   username: string;
   kelas: string;
+  /**
+   * "YYYY-MM-DD", opsional. Kalau terisi, password akun mengikuti
+   * konvensi login siswa yang sesungguhnya (DDMMYYYY — lihat
+   * `LoginForm.tsx` dan `src/lib/akun.ts`), BUKAN password acak. Kalau
+   * kosong/tidak valid, jatuh ke password acak seperti sebelumnya —
+   * siswa itu tidak akan bisa login dengan tanggal lahir sampai
+   * passwordnya di-reset manual, dan itu ditandai jelas di kolom
+   * ringkasan hasil import.
+   */
+  tanggalLahir?: string;
 };
 
 export type ImportSiswaRowResult =
@@ -19,6 +34,11 @@ export type ImportSiswaRowResult =
       username: string;
       kelasNama: string;
       password: string;
+      /** true kalau password = tanggal lahir (siswa bisa login normal
+       *  lewat form biasa); false kalau password acak (tanggal lahir
+       *  kosong/tidak valid di file — siswa ini TIDAK bisa login pakai
+       *  tanggal lahir sampai adminnya reset password manual). */
+      passwordDariTanggalLahir: boolean;
     }
   | {
       status: "dilewati";
@@ -170,7 +190,10 @@ export async function importSiswaBatch(
       continue;
     }
 
-    const password = generatePassword();
+    const passwordDariTanggal = row.tanggalLahir
+      ? passwordDariTanggalISO(row.tanggalLahir)
+      : null;
+    const password = passwordDariTanggal ?? generatePassword();
     const email = `${username}${emailSuffix}`;
 
     const { data: created, error: createError } =
@@ -196,6 +219,7 @@ export async function importSiswaBatch(
       nama,
       kelas_id: kelasId,
       username,
+      tanggal_lahir: passwordDariTanggal ? row.tanggalLahir : null,
     });
 
     if (insertError) {
@@ -223,6 +247,7 @@ export async function importSiswaBatch(
       username,
       kelasNama: kelasNamaInput,
       password,
+      passwordDariTanggalLahir: Boolean(passwordDariTanggal),
     });
   }
 
@@ -354,6 +379,126 @@ export async function resetPasswordSiswa(
 
   revalidatePath("/admin/log");
   return { success: true, password };
+}
+
+export type TambahSiswaManualResult =
+  | {
+      success: true;
+      nama: string;
+      username: string;
+      password: string;
+    }
+  | { success: false; error: string };
+
+/**
+ * Tambah SATU siswa lewat form manual — poin 2 sisi admin. Password
+ * diturunkan dari tanggal lahir (format DDMMYYYY, konsisten dengan
+ * `LoginForm.tsx` dan akun siswa lama — lihat `src/lib/akun.ts` untuk
+ * penjelasan kenapa format INI yang dipakai, bukan varian lain yang
+ * pernah ada di kode lama), bukan diketik admin — supaya siswa dan
+ * admin tidak perlu bertukar password lewat kertas terpisah; siswa
+ * cukup diberi tahu username-nya, sisanya sudah dia hafal.
+ */
+export async function tambahSiswaManual(
+  nama: string,
+  username: string,
+  kelasId: string,
+  tanggalLahirISO: string
+): Promise<TambahSiswaManualResult> {
+  const sessionSupabase = createClient();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  const { data: guruRow } = await sessionSupabase
+    .from("guru")
+    .select("id")
+    .eq("auth_id", user?.id ?? "")
+    .maybeSingle();
+
+  if (!guruRow) {
+    return {
+      success: false,
+      error: "Ditolak: hanya guru/admin yang login yang boleh menambah akun.",
+    };
+  }
+
+  const namaBersih = nama.trim();
+  const usernameBersih = normalkanUsername(username);
+  const password = passwordDariTanggalISO(tanggalLahirISO);
+
+  if (!namaBersih || !usernameBersih || !kelasId) {
+    return {
+      success: false,
+      error: "Nama, username, dan kelas wajib diisi.",
+    };
+  }
+  if (!password) {
+    return {
+      success: false,
+      error: "Tanggal lahir tidak valid.",
+    };
+  }
+
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Konfigurasi server tidak lengkap.",
+    };
+  }
+
+  const { data: usernameSudahAda } = await admin
+    .from("siswa")
+    .select("nama")
+    .eq("username", usernameBersih)
+    .maybeSingle();
+  if (usernameSudahAda) {
+    return {
+      success: false,
+      error: `Username ini sudah dipakai siswa lain (${usernameSudahAda.nama}).`,
+    };
+  }
+
+  const email = emailSiswaDariUsername(usernameBersih);
+  const { data: created, error: createError } = await admin.auth.admin.createUser(
+    { email, password, email_confirm: true }
+  );
+  if (createError || !created?.user) {
+    return {
+      success: false,
+      error: `Gagal membuat akun auth: ${createError?.message ?? "tidak diketahui"}.`,
+    };
+  }
+
+  const { error: insertError } = await admin.from("siswa").insert({
+    auth_id: created.user.id,
+    nama: namaBersih,
+    kelas_id: kelasId,
+    username: usernameBersih,
+    tanggal_lahir: tanggalLahirISO,
+  });
+
+  if (insertError) {
+    await admin.auth.admin.deleteUser(created.user.id);
+    return {
+      success: false,
+      error: `Gagal menyimpan data siswa: ${insertError.message}.`,
+    };
+  }
+
+  const { error: logError } = await sessionSupabase.rpc("catat_log_aktivitas", {
+    p_aksi: "tambah_siswa_manual",
+    p_entitas: "siswa",
+    p_entitas_id: created.user.id,
+    p_detail: { nama: namaBersih, username: usernameBersih },
+  });
+  if (logError) console.error("Gagal mencatat log tambah_siswa_manual:", logError);
+
+  revalidatePath("/admin/siswa");
+  revalidatePath("/admin/log");
+  return { success: true, nama: namaBersih, username: usernameBersih, password };
 }
 
 export type DampakHapusSiswa = {

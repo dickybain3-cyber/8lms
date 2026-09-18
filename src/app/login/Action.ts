@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isJenjangValid, type Jenjang } from "@/lib/jenjang";
+import { suffixEmailSiswa, passwordDariTanggalISO } from "@/lib/akun";
 
 /**
  * ALUR LOGIN SISWA MODE UJI COBA (Sesi ini).
@@ -36,22 +37,42 @@ import { isJenjangValid, type Jenjang } from "@/lib/jenjang";
  * ada) atau tambahkan token per kelas.
  */
 
-/** Sama dengan yang dipakai `LoginForm.tsx` dan import CSV admin. */
+/** Diteruskan ke helper terpusat — lihat `src/lib/akun.ts`. */
 function emailSuffix(): string {
-  return process.env.NEXT_PUBLIC_SISWA_EMAIL_SUFFIX ?? "@siswa.lms-cbt.local";
+  return suffixEmailSiswa();
 }
 
 /**
  * Password akun auth diturunkan dari tanggal lahir supaya deterministik:
  * server tidak perlu menyimpan password di mana pun, cukup hitung ulang
- * setiap kali siswa login. Bentuknya "Lms#DDMMYYYY" (bukan 8 digit
- * polos) supaya tetap lolos kalau project Supabase-nya mengaktifkan
- * syarat "huruf besar/kecil/angka/simbol" di Auth settings — pernah jadi
- * penyebab createUser gagal diam-diam dengan pesan yang tidak jelas.
+ * setiap kali siswa login.
+ *
+ * ── DIPERBAIKI DI SESI REVISI INI ──
+ *
+ * Fungsi ini DULU mengembalikan "Lms#DDMMYYYY", sementara
+ * `LoginForm.tsx` mengirim "DDMMYYYY" polos ke `signInWithPassword`.
+ * Dua rumus berbeda untuk satu hal yang sama — dan karena `LoginForm`
+ * belum pernah memanggil `siapkanLoginSiswa`, ketidakcocokan itu tidak
+ * pernah terlihat. Begitu jalur ini dipakai (atau akun dibuat lewat
+ * form "Tambah Siswa" yang baru), gejalanya adalah yang paling sulit
+ * ditelusuri: akun ada, tanggal lahir diketik benar, tapi ditolak.
+ *
+ * Sekarang keduanya memanggil rumus yang SAMA dari `src/lib/akun.ts`.
+ * Yang dipilih adalah format polos "DDMMYYYY", bukan varian berawalan
+ * — karena itulah format yang dipakai akun siswa yang SUDAH terlanjur
+ * ada di database; mengubah standarnya sekarang berarti setiap akun
+ * lama harus direset dalam satu malam.
+ *
+ * PERINGATAN yang dibawa dari komentar lama (masih berlaku): kalau
+ * project Supabase mengaktifkan syarat kompleksitas kata sandi di
+ * Authentication > Providers > Password, delapan digit angka polos akan
+ * DITOLAK, dan penolakannya muncul sebagai `createUser` gagal dengan
+ * pesan yang tidak menyebut-nyebut kompleksitas sama sekali. Kalau
+ * pembuatan akun siswa gagal dengan alasan yang tidak masuk akal,
+ * periksa setelan itu lebih dulu sebelum menyalahkan kode ini.
  */
 function passwordDariTanggal(tanggalISO: string): string {
-  const [tahun, bulan, tanggal] = tanggalISO.split("-");
-  return `Lms#${tanggal}${bulan}${tahun}`;
+  return passwordDariTanggalISO(tanggalISO) ?? "";
 }
 
 /** "2012-05-14" atau "2012-05-14T00:00:00+00:00" -> "2012-05-14". */

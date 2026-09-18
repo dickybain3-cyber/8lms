@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { emailGuruDariUsername } from "@/lib/akun";
 import {
   JENJANG_LIST,
   JENJANG_LABEL,
@@ -117,7 +118,12 @@ export default function LoginForm() {
 
   // --- Tab Admin/Guru ---
   const [jenjangAdmin, setJenjangAdmin] = useState<"" | Jenjang>("");
-  const [adminEmail, setAdminEmail] = useState("");
+  // Diisi NIP (paling umum) atau, untuk akun lama yang belum punya NIP
+  // di database (lihat migrasi 0015), email asli — dibedakan di
+  // `handleSubmitAdmin` lewat ada-tidaknya "@". Nama variabelnya sengaja
+  // "Identifier", bukan "Email" seperti sebelumnya, supaya jelas isinya
+  // bukan cuma email lagi.
+  const [adminIdentifier, setAdminIdentifier] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [lihatPassword, setLihatPassword] = useState(false);
 
@@ -303,8 +309,22 @@ export default function LoginForm() {
     setJenjangCookie(jenjangAdmin);
     const supabase = createClient(jenjangAdmin);
 
+    /**
+     * Username/NIP -> email sintetis lewat rumus yang SAMA dipakai
+     * server saat membuat akun (`emailGuruDariUsername`, satu sumber
+     * kebenaran di `src/lib/akun.ts`) — bukan menebak-nebak di sini.
+     * Kalau yang diketik mengandung "@", diperlakukan sebagai email
+     * ASLI apa adanya, supaya akun lama yang masih login dengan email
+     * (belum dimigrasi username-nya, lihat migrasi 0015) tetap bisa
+     * masuk tanpa perubahan apa pun di sisi mereka.
+     */
+    const identifier = adminIdentifier.trim();
+    const email = identifier.includes("@")
+      ? identifier
+      : emailGuruDariUsername(identifier);
+
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: adminEmail.trim(),
+      email,
       password: adminPassword,
     });
 
@@ -312,7 +332,7 @@ export default function LoginForm() {
       setLoading(false);
       setTahap("");
       setError(
-        "Email atau kata sandi salah — atau jenjang yang dipilih tidak sesuai dengan project akun ini."
+        "Username/NIP atau kata sandi salah — atau jenjang yang dipilih tidak sesuai dengan project akun ini."
       );
       return;
     }
@@ -499,7 +519,7 @@ export default function LoginForm() {
 
           {siswaTerpilih && (
             <div className="animasi-muncul">
-              <span className="label-field">Tanggal lahir</span>
+              <span className="label-field">Tanggal hari ini</span>
               <div className="grid grid-cols-[0.8fr_1.3fr_1fr] gap-2">
                 <input
                   id="tglTanggal"
@@ -582,19 +602,23 @@ export default function LoginForm() {
           </div>
 
           <div>
-            <label htmlFor="adminEmail" className="label-field">
-              Email
+            <label htmlFor="adminIdentifier" className="label-field">
+              Username / NIP
             </label>
             <input
-              id="adminEmail"
-              type="email"
+              id="adminIdentifier"
+              type="text"
               required
-              autoComplete="email"
-              value={adminEmail}
-              onChange={(e) => setAdminEmail(e.target.value)}
+              autoComplete="username"
+              value={adminIdentifier}
+              onChange={(e) => setAdminIdentifier(e.target.value)}
               className="field"
-              placeholder="guru@sekolah.sch.id"
+              placeholder="mis. 196504121990031005"
             />
+            <p className="mt-1.5 text-[0.72rem] text-slate-500">
+              Akun lama yang belum punya NIP di sistem masih bisa
+              mengetikkan email seperti biasa di kolom ini.
+            </p>
           </div>
 
           <div>

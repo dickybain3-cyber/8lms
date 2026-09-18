@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import ImportSiswaForm from "./ImportSiswaForm";
+import TambahSiswaManualForm from "./TambahSiswaManualForm";
 import AkunAksiButtons from "@/components/admin/AkunAksiButtons";
 import {
   resetPasswordSiswa,
@@ -117,7 +118,10 @@ export default async function SiswaPage({
         </div>
       </div>
 
-      <ImportSiswaForm kelasList={kelasList ?? []} />
+      <div className="grid gap-5 lg:grid-cols-2">
+        <TambahSiswaManualForm kelasList={kelasList ?? []} />
+        <ImportSiswaForm kelasList={kelasList ?? []} />
+      </div>
 
       <div className="mt-8">
         <div className="flex flex-wrap items-start justify-between gap-3">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Layar antrian + sapaan sukses saat login.
@@ -27,6 +28,36 @@ import { useEffect, useState } from "react";
  */
 
 /**
+ * ── PERBAIKAN: SAPAAN YANG "KEPOTONG" ──
+ *
+ * `LayarAntrian` dan `SapaanSukses` dulu dirender `position: fixed`
+ * langsung di tempat mereka dipanggil — di dalam kartu login
+ * (`LoginPage`) yang punya `backdrop-blur-[5px]` di elemen pembungkusnya.
+ *
+ * Itu masalahnya. `backdrop-filter` (juga `filter`, `transform`,
+ * `will-change: transform`) pada sebuah elemen membuatnya jadi
+ * *containing block* baru untuk keturunan yang `position: fixed` —
+ * aturan CSS yang mudah tidak disadari karena namanya "fixed" terdengar
+ * seperti selalu relatif ke viewport. Begitu ada nenek moyang yang
+ * memakai salah satu properti itu, `inset-0` pada elemen fixed di
+ * dalamnya berarti "penuhi kartu login yang blur itu", BUKAN "penuhi
+ * layar" — persis kenapa sapaannya terlihat terjepit/terpotong di
+ * dalam kartu kecil, bukan menutupi seluruh layar seperti yang dituju
+ * className-nya.
+ *
+ * Perbaikannya: kedua komponen ini di-render lewat React Portal
+ * langsung ke `document.body`, keluar dari pohon DOM manapun yang
+ * memakai backdrop-blur. Pemanggilnya (`LoginForm.tsx`) tidak perlu
+ * berubah sama sekali — cara memanggilnya tetap sama, cuma tempat
+ * akhirnya di DOM yang pindah.
+ */
+function usePortalTarget(): HTMLElement | null {
+  const [siap, setSiap] = useState(false);
+  useEffect(() => setSiap(true), []);
+  return siap ? document.body : null;
+}
+
+/**
  * Layar penuh selama proses masuk.
  *
  * ── KENAPA ADA TAHAPAN, BUKAN SEKADAR SPINNER ──
@@ -43,13 +74,16 @@ import { useEffect, useState } from "react";
  */
 export function LayarAntrian({ tahap }: { tahap: string }) {
   const [detik, setDetik] = useState(0);
+  const target = usePortalTarget();
 
   useEffect(() => {
     const t = setInterval(() => setDetik((d) => d + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
-  return (
+  if (!target) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/70 px-5 backdrop-blur-sm">
       <div className="w-full max-w-[320px] animasi-muncul rounded-3xl bg-white px-7 py-9 text-center shadow-2xl">
         <div className="relative mx-auto mb-6 h-16 w-16">
@@ -64,11 +98,6 @@ export function LayarAntrian({ tahap }: { tahap: string }) {
           {tahap}
         </p>
 
-        {/*
-          Keterangan antrian baru muncul setelah 6 detik. Kalau langsung
-          ditampilkan, siswa yang login-nya cepat pun ikut membaca
-          "sedang antre" dan mengira sistemnya lambat.
-        */}
         {detik >= 6 && (
           <p className="animasi-muncul mt-4 rounded-xl bg-amber-50 px-3 py-2.5 text-[0.72rem] leading-relaxed text-amber-800">
             <i className="fas fa-hourglass-half mr-1.5" aria-hidden />
@@ -78,7 +107,8 @@ export function LayarAntrian({ tahap }: { tahap: string }) {
           </p>
         )}
       </div>
-    </div>
+    </div>,
+    target
   );
 }
 
@@ -114,6 +144,7 @@ export function SapaanSukses({
   onSelesai: () => void;
 }) {
   const [sisa, setSisa] = useState(3);
+  const target = usePortalTarget();
 
   useEffect(() => {
     if (sisa <= 0) {
@@ -126,27 +157,35 @@ export function SapaanSukses({
 
   const inisial = data.nama.trim().charAt(0).toUpperCase() || "?";
 
-  return (
+  if (!target) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/70 px-5 backdrop-blur-sm">
       <div className="w-full max-w-[340px] animasi-muncul overflow-hidden rounded-3xl bg-white text-center shadow-2xl">
-        <div className="relative bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] px-6 pb-12 pt-8">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-white/15 ring-4 ring-white/25 backdrop-blur-sm">
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#3b82f6] via-[#2563eb] to-[#1d4ed8] px-6 pb-12 pt-8">
+          {/* Dua lingkaran dekoratif setengah-transparan — pemanis murni
+              CSS, tanpa gambar yang perlu diunduh, supaya kartunya terasa
+              lebih "berkelas" tanpa menambah beban halaman login yang
+              dibuka 600 HP sekaligus. */}
+          <span
+            className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10"
+            aria-hidden
+          />
+          <span
+            className="pointer-events-none absolute -bottom-12 -left-6 h-24 w-24 rounded-full bg-white/10"
+            aria-hidden
+          />
+          <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-white/15 ring-4 ring-white/25 backdrop-blur-sm">
             <i
               className="fas fa-circle-check text-4xl text-white"
               aria-hidden
             />
           </div>
-          <p className="mt-4 text-[0.7rem] font-bold uppercase tracking-[0.2em] text-white/80">
+          <p className="relative mt-4 text-[0.7rem] font-bold uppercase tracking-[0.2em] text-white/80">
             Berhasil masuk
           </p>
         </div>
 
-        {/*
-          Avatar inisial sengaja menumpuk di perbatasan dua area
-          (`-mt-10`) — ini yang membuat kartunya terasa "mewah" alih-alih
-          seperti kotak peringatan biasa, tanpa perlu gambar apa pun yang
-          harus diunduh.
-        */}
         <div className="-mt-10 px-6 pb-7">
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl border-4 border-white bg-gradient-to-br from-amber-400 to-amber-500 font-serif text-3xl font-bold text-white shadow-lg">
             {inisial}
@@ -186,6 +225,7 @@ export function SapaanSukses({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    target
   );
 }
