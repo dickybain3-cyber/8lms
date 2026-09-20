@@ -7,6 +7,7 @@ import {
   detailEventAdmin,
   type MapelAdminRingkas,
 } from "@/lib/supabase/admin-multi-event";
+import { statusEvent } from "@/lib/event-status";
 import { hitungDampakHapusEvent } from "../actions";
 import DeleteEventButton from "./DeleteEventButton";
 import {
@@ -40,6 +41,7 @@ function formatTanggal(iso: string) {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: "Asia/Jakarta",
   });
 }
 
@@ -258,6 +260,8 @@ function IsiDetail({
   const totalKelasTarget = new Set(
     mapel.flatMap((m) => m.kelasNama)
   ).size;
+  const eventSelesai =
+    statusEvent(event.tgl_mulai, event.tgl_selesai, sekarang) === "selesai";
 
   return (
     <div>
@@ -274,6 +278,24 @@ function IsiDetail({
         }
         aksi={aksiEvent}
       />
+
+      {/*
+        Event yang sudah lewat tetap bisa dibuka lagi (mis. ujian
+        susulan). Dua hal yang perlu diubah, dan keduanya gampang
+        terlewat: tanggal kegiatan (label & pengelompokan di daftar)
+        DAN jadwal tiap mapel — jendela ujian siswa ditentukan oleh
+        jadwal mapel, bukan oleh tanggal kegiatan.
+        Tombol Edit hanya ada di jalur guru, jadi petunjuknya juga.
+      */}
+      {eventSelesai && !jenjang && (
+        <Info nada="info">
+          Kegiatan ini sudah selesai. Untuk membuka ulang (mis. ujian
+          susulan): klik <strong>Edit Kegiatan</strong> untuk mengubah
+          tanggal selesai, lalu perpanjang juga <strong>jam ujian dibuka
+          &amp; ditutup</strong> di mapel yang mau dibuka — siswa hanya
+          bisa masuk selama jadwal mapelnya masih berlaku.
+        </Info>
+      )}
 
       <BarisStatistik>
         <Statistik

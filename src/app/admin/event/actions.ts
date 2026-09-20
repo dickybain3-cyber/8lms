@@ -129,6 +129,7 @@ export async function createEvent(
   }
 
   revalidatePath("/admin/event");
+  revalidatePath("/admin"); // dashboard ikut menampilkan daftar kegiatan
   redirect(`/admin/event/${event.id}`);
 }
 
@@ -181,6 +182,7 @@ export async function updateEvent(
 
   revalidatePath(`/admin/event/${eventId}`);
   revalidatePath("/admin/event");
+  revalidatePath("/admin"); // dashboard: kegiatan yang dibuka ulang pindah ke "Sedang berlangsung"
   redirect(`/admin/event/${eventId}`);
 }
 
@@ -202,6 +204,7 @@ export async function deleteEvent(eventId: string): Promise<ActionState> {
   }
 
   revalidatePath("/admin/event");
+  revalidatePath("/admin");
   redirect("/admin/event");
 }
 
