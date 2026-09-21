@@ -45,7 +45,7 @@ export default function EventForm() {
                 />
                 <i className={`fas fa-${j.ikon} text-ink/40`} aria-hidden />
                 {j.label}
-                {!j.pakaiMesinUjian && (
+                                {!j.siap && (
                   <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700">
                     Segera
                   </span>
