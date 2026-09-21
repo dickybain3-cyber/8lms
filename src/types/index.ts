@@ -219,3 +219,78 @@ export interface PengumpulanTugas {
   dinilai_at: string | null;
   dinilai_by: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Tahap 5 — forum diskusi (event.jenis = 'forum'). Lihat 0020_forum.sql.
+// ---------------------------------------------------------------------------
+
+/**
+ * Baris tabel `forum_topik`. Jadwal buka/tutupnya berlaku untuk SEMUA
+ * kelas yang ditautkan lewat `forum_kelas` — beda dari `Tugas`, yang
+ * jadwalnya per tugas tapi tetap satu untuk semua kelas targetnya juga
+ * (di titik ini keduanya sama); yang beda dari tugas adalah biasanya cuma
+ * ADA SATU forum_topik yang relevan per event (lihat penjelasan di kepala
+ * 0020_forum.sql soal kenapa halaman admin langsung ke [kelasId] tanpa
+ * [topikId]).
+ */
+export interface ForumTopik {
+  id: string;
+  event_id: string;
+  dibuka_at: string;
+  ditutup_at: string;
+  created_at: string;
+}
+
+export interface ForumKelas {
+  forum_topik_id: string;
+  kelas_id: string;
+}
+
+export type JenisIsiForumPesan = "teks" | "sticker" | "emoticon";
+
+/**
+ * Baris tabel `forum_pesan` — satu bubble chat.
+ *
+ * Persis SATU dari `siswa_id`/`guru_id` yang terisi (constraint
+ * `forum_pesan_satu_pengirim`), dan itulah yang dipakai UI untuk memilih
+ * gaya bubble (kiri/kanan, warna). `kelas_id` dipilih eksplisit saat
+ * insert, tidak disimpulkan dari `siswa_id` — lihat penjelasan panjang di
+ * kepala 0020_forum.sql ("KENAPA CHAT PER KELAS TERPISAH").
+ */
+export interface ForumPesan {
+  id: string;
+  forum_topik_id: string;
+  kelas_id: string;
+  siswa_id: string | null;
+  guru_id: string | null;
+  isi: string;
+  jenis_isi: JenisIsiForumPesan;
+  /** Toggle, bukan akumulasi — lihat `forum.ts` (`POIN_BONUS_PER_KLIK`) dan
+   *  komentar kolom ini di 0020_forum.sql. */
+  bonus_diberikan: boolean;
+  created_at: string;
+}
+
+/**
+ * Baris tabel `forum_poin` — agregat, dijaga sinkron oleh trigger di
+ * `forum_pesan` (0020_forum.sql bagian 3), TIDAK PERNAH ditulis langsung
+ * dari Server Action.
+ *
+ * Siswa yang belum pernah mengirim pesan bertipe teks di ruang ini TIDAK
+ * punya baris di sini sama sekali — bukan baris dengan angka 0. Tampilan
+ * papan poin kelas WAJIB memakai daftar siswa kelas sebagai sumber baris
+ * (kiri), lalu menempeli angka dari sini (kanan) kalau ada, supaya siswa
+ * yang belum pernah bicara sekalipun tetap terlihat di papan dengan
+ * "0 pesan" — bukan hilang begitu saja dari daftar.
+ */
+export interface ForumPoin {
+  forum_topik_id: string;
+  kelas_id: string;
+  siswa_id: string;
+  poin_pesan: number;
+  poin_bonus: number;
+  /** `poin_pesan + poin_bonus`, generated column di database — lihat
+   *  `hitungPoinTotal()` di forum.ts untuk versi TypeScript-nya (dipakai
+   *  saat menghitung ulang di sisi klien sebelum refresh selesai). */
+  total: number;
+}

@@ -283,10 +283,15 @@ function testJenisEventTahap4() {
   assert.equal(jenisEventSiap("assignment"), true);
   assert.equal(definisiJenisEvent("assignment").tahapRencana, null);
 
-  // Forum masih menunggu Tahap 5.
+  // Forum (Tahap 5): mesinnya sendiri, bukan tugas, dan sejak Tahap 5
+  // sudah siap juga — diperbarui dari Tahap 4, ketika forum masih
+  // menunggu dan baris ini mengharapkan `false`/`5`. Lihat
+  // `forum.test.ts` dan `event-jenis.test.ts` untuk uji forum yang lebih
+  // lengkap; di sini cukup dipastikan `assignment` tidak ikut berubah
+  // gara-gara forum selesai dikerjakan.
   assert.equal(pakaiMesinTugas("forum"), false);
-  assert.equal(jenisEventSiap("forum"), false);
-  assert.equal(definisiJenisEvent("forum").tahapRencana, 5);
+  assert.equal(jenisEventSiap("forum"), true);
+  assert.equal(definisiJenisEvent("forum").tahapRencana, null);
 
   // `pakaiMesinUjian` TIDAK boleh berubah artinya — ia dipakai sebagai
   // penjaga di createMapel dan dicerminkan trigger 0018. Kalau suatu saat

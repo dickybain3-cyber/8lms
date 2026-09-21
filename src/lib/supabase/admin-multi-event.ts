@@ -42,6 +42,18 @@ export interface EventAdmin {
   /** Jumlah tugas (Tahap 4). 0 kalau migrasi 0019 belum jalan di project
    *  ini — sama alasannya dengan fallback `jenis` di bawah. */
   jumlah_tugas: number;
+  /**
+   * 0 atau 1 (Tahap 5) — apakah event forum ini sudah punya `forum_topik`.
+   * SENGAJA bukan jumlah pesan/kelas aktif: badge di daftar kegiatan cuma
+   * perlu membedakan "forum sudah dibuat" dari "forum belum dibuat", dan
+   * embedded count langsung dari tabel `event` cuma bisa menjangkau tabel
+   * yang mereferensi `event` LANGSUNG (`forum_topik.event_id`) — bukan dua
+   * tingkat lebih dalam (`forum_pesan`, yang mereferensi `forum_topik`).
+   * Angka kelas aktif & jumlah pesan yang sebenarnya dihitung terpisah di
+   * `ambilRingkasForum()`, dipanggil dari halaman detail event yang sudah
+   * tahu forum_topik mana yang relevan.
+   */
+  jumlah_forum_topik: number;
   /** Fallback `'asesmen_akhir'` kalau migrasi 0018 belum jalan di project
    *  ini — lihat `ambilDaftarEventMentah()`. Bukan tebakan: itu memang
    *  DEFAULT kolomnya dan satu-satunya jenis yang mungkin ada sebelum
@@ -76,6 +88,7 @@ interface BarisEventMentah {
   jenis?: unknown;
   mapel: { count: number }[] | { count: number } | null;
   tugas?: { count: number }[] | { count: number } | null;
+  forum_topik?: { count: number }[] | { count: number } | null;
 }
 
 function jumlahDariJoin(
@@ -87,11 +100,11 @@ function jumlahDariJoin(
 }
 
 /**
- * Daftar event + jumlah mapel & tugasnya, dipakai bersama oleh
+ * Daftar event + jumlah mapel, tugas, & forum-nya, dipakai bersama oleh
  * `event-sesi.ts` (jalur guru) dan `daftarEventAdmin()` (jalur admin
  * lintas jenjang).
  *
- * ── TIGA TAHAP SELECT, DAN KENAPA BUKAN SATU ──
+ * ── EMPAT TAHAP SELECT, DAN KENAPA BUKAN SATU ──
  *
  * Aplikasi ini berjalan di TIGA project Supabase terpisah (kelas 7, 8, 9)
  * yang migrasinya dijalankan manual satu per satu. Di sela-sela pekerjaan
@@ -100,9 +113,18 @@ function jumlahDariJoin(
  * boleh kosong di project yang tertinggal hanya karena satu kolom untuk
  * badge belum ada.
  *
- *   Tahap 1: jenis + mapel(count) + tugas(count)   (0018 & 0019 jalan)
- *   Tahap 2: jenis + mapel(count)                  (0019 belum)
- *   Tahap 3: mapel(count)                          (0018 juga belum)
+ *   Tahap 1: jenis + mapel(count) + tugas(count) + forum_topik(count)
+ *            (0018, 0019, DAN 0020 jalan)
+ *   Tahap 2: jenis + mapel(count) + tugas(count)   (0020 belum)
+ *   Tahap 3: jenis + mapel(count)                  (0019 juga belum)
+ *   Tahap 4: mapel(count)                          (0018 juga belum)
+ *
+ * Sejak Tahap 5 ada satu tahap baru dibanding Tahap 4 — bukan mengubah
+ * urutan yang sudah ada. Ini disengaja: project yang migrasi 0019-nya
+ * SUDAH jalan tapi 0020-nya BELUM (kasus paling mungkin terjadi begitu
+ * Tahap 5 dipasang, karena 0020 pasti dijalankan belakangan) harus tetap
+ * jatuh ke tahap yang masih membaca `tugas(count)` dengan benar — bukan
+ * langsung melompat ke tahap paling minim.
  *
  * Kegagalan SELAIN "kolom/relasi tidak ada" — koneksi putus, kredensial
  * salah — tetap dilempar dari tahap terakhir, supaya masalah nyata tidak
@@ -113,9 +135,10 @@ export async function ambilDaftarEventMentah(
   client: KlienEventMentah
 ): Promise<EventAdmin[]> {
   const dasar = "id, nama, tgl_mulai, tgl_selesai, kelas_utama";
-  const kolomTahap1 = `${dasar}, jenis, mapel(count), tugas(count)`;
-  const kolomTahap2 = `${dasar}, jenis, mapel(count)`;
-  const kolomTahap3 = `${dasar}, mapel(count)`;
+  const kolomTahap1 = `${dasar}, jenis, mapel(count), tugas(count), forum_topik(count)`;
+  const kolomTahap2 = `${dasar}, jenis, mapel(count), tugas(count)`;
+  const kolomTahap3 = `${dasar}, jenis, mapel(count)`;
+  const kolomTahap4 = `${dasar}, mapel(count)`;
 
   const ambil = (kolom: string) =>
     client.from("event").select(kolom).order("tgl_mulai", { ascending: false });
@@ -132,9 +155,14 @@ export async function ambilDaftarEventMentah(
       data = tahap2.data;
     } else {
       const tahap3 = await ambil(kolomTahap3);
-      if (tahap3.error) throw new Error(tahap3.error.message);
-      data = tahap3.data;
-      adaKolomJenis = false;
+      if (!tahap3.error) {
+        data = tahap3.data;
+      } else {
+        const tahap4 = await ambil(kolomTahap4);
+        if (tahap4.error) throw new Error(tahap4.error.message);
+        data = tahap4.data;
+        adaKolomJenis = false;
+      }
     }
   }
 
@@ -146,6 +174,7 @@ export async function ambilDaftarEventMentah(
     kelas_utama: Number(e.kelas_utama),
     jumlah_mapel: jumlahDariJoin(e.mapel),
     jumlah_tugas: jumlahDariJoin(e.tugas),
+    jumlah_forum_topik: jumlahDariJoin(e.forum_topik),
     jenis:
       adaKolomJenis && jenisEventValid(e.jenis) ? e.jenis : "asesmen_akhir",
   }));
@@ -423,7 +452,192 @@ export async function daftarTugasAdmin(
   eventId: string
 ): Promise<TugasRingkas[]> {
   const client = createAdminClient(jenjang);
-  return ambilRingkasTugas(client as unknown as KlienTugasMentah, eventId);
+  return ambilRingkasTugas(client, eventId);
+}
+
+// ---------------------------------------------------------------------------
+// Tahap 5 — ringkasan forum dalam sebuah event
+// ---------------------------------------------------------------------------
+
+export interface ForumKelasRingkas {
+  kelasId: string;
+  kelasNama: string;
+  jumlahSiswa: number;
+  /** Siswa dengan `poin_pesan > 0` di ruang ini — bukan "jumlah pesan",
+   *  bukan pula "jumlah siswa di kelas". Angka yang dijawab tepat oleh
+   *  pertanyaan "berapa anak yang sudah ikut ngobrol". */
+  jumlahSiswaAktif: number;
+  /** SUM `poin_pesan` seluruh siswa ruang ini — setara jumlah pesan
+   *  bertipe teks yang pernah masuk, karena tiap pesan teks = +1 poin
+   *  (lihat trigger di 0020_forum.sql). Sticker/emoticon tidak ikut
+   *  terhitung di sini, sama seperti tidak ikut terhitung di poin. */
+  jumlahPesanTeks: number;
+}
+
+/** Bentuk gabungan forum_topik + ringkasan tiap ruang kelasnya untuk SATU
+ *  event. `ada: false` berarti guru belum membuat forum_topik untuk
+ *  event ini sama sekali — bukan error, dan bukan pula "forum kosong". */
+export interface ForumRingkas {
+  ada: boolean;
+  id: string | null;
+  dibuka_at: string | null;
+  ditutup_at: string | null;
+  kelas: ForumKelasRingkas[];
+}
+
+type HasilTunggal = {
+  data: unknown | null;
+  error: { message: string } | null;
+};
+
+interface PembangunBacaForum extends PromiseLike<HasilBaca> {
+  eq(kolom: string, nilai: string): PembangunBacaForum;
+  in(kolom: string, nilai: string[]): PembangunBacaForum;
+  maybeSingle(): PromiseLike<HasilTunggal>;
+}
+
+/** Bentuk minimal client untuk `ambilRingkasForum` — pola dan alasannya
+ *  sama persis dengan `KlienTugasMentah`: nama tabel dibatasi ke literal
+ *  yang benar-benar dipakai, supaya salah ketik tertangkap compiler. */
+export interface KlienForumMentah {
+  from(
+    tabel: "forum_topik" | "forum_kelas" | "forum_poin" | "siswa"
+  ): { select(kolom: string): PembangunBacaForum };
+}
+
+/**
+ * Forum satu event + ringkasan tiap ruang kelasnya.
+ *
+ * ── KENAPA MAYBESINGLE, BUKAN LIST ──
+ *
+ * Skema TIDAK memaksa satu forum_topik per event lewat constraint unik
+ * (lihat penjelasan panjang di kepala 0020_forum.sql), tapi alur UI Tahap
+ * 5 memaksanya lewat Server Action (`createForumTopik` menolak membuat
+ * yang kedua). `maybeSingle()` mencerminkan asumsi itu di sisi baca: kalau
+ * suatu saat asumsinya dilanggar (mis. lewat SQL Editor manual), fungsi
+ * ini akan melempar lewat error PostgREST "multiple rows returned" alih-
+ * alih diam-diam hanya menampilkan salah satu forum secara acak.
+ *
+ * ── KENAPA TIGA QUERY TAMBAHAN, POLA SAMA DENGAN ambilRingkasTugas ──
+ *
+ * `jumlahSiswaAktif` butuh FILTER (`poin_pesan > 0`) yang tidak bisa
+ * dijawab embedded count. `jumlahSiswa` hidup di tabel `siswa`, bukan di
+ * forum sama sekali. Jadi: tarik apa adanya, hitung di JavaScript — sama
+ * alasannya dengan `ambilRingkasTugas`, dan volumenya sama kecilnya.
+ */
+export async function ambilRingkasForum(
+  client: KlienForumMentah,
+  eventId: string
+): Promise<ForumRingkas> {
+  const kosong: ForumRingkas = {
+    ada: false,
+    id: null,
+    dibuka_at: null,
+    ditutup_at: null,
+    kelas: [],
+  };
+
+  const hasilTopik = await client
+    .from("forum_topik")
+    .select("id, dibuka_at, ditutup_at")
+    .eq("event_id", eventId)
+    .maybeSingle();
+
+  // Tabel `forum_topik` belum ada (migrasi 0020 belum jalan di project
+  // ini) -> forum dianggap belum dibuat, BUKAN error. Sama alasannya
+  // dengan `ambilRingkasTugas` terhadap migrasi 0019 yang belum jalan.
+  if (hasilTopik.error) return kosong;
+
+  const topik = hasilTopik.data as {
+    id: string;
+    dibuka_at: string;
+    ditutup_at: string;
+  } | null;
+  if (!topik) return kosong;
+
+  const hasilKelas = await client
+    .from("forum_kelas")
+    .select("kelas_id, kelas(nama)")
+    .eq("forum_topik_id", topik.id);
+
+  const kelasList = (
+    hasilKelas.error ? [] : (hasilKelas.data as unknown[]) ?? []
+  ) as unknown as { kelas_id: string; kelas: { nama: string } | null }[];
+
+  if (kelasList.length === 0) {
+    return {
+      ada: true,
+      id: topik.id,
+      dibuka_at: topik.dibuka_at,
+      ditutup_at: topik.ditutup_at,
+      kelas: [],
+    };
+  }
+
+  const kelasIds = kelasList.map((k) => k.kelas_id);
+
+  const [hasilSiswa, hasilPoin] = await Promise.all([
+    client.from("siswa").select("id, kelas_id").in("kelas_id", kelasIds),
+    client
+      .from("forum_poin")
+      .select("kelas_id, siswa_id, poin_pesan")
+      .eq("forum_topik_id", topik.id),
+  ]);
+
+  const siswaPerKelas = new Map<string, number>();
+  for (const s of (hasilSiswa.error
+    ? []
+    : (hasilSiswa.data as unknown[]) ?? []) as unknown as {
+    id: string;
+    kelas_id: string;
+  }[]) {
+    siswaPerKelas.set(s.kelas_id, (siswaPerKelas.get(s.kelas_id) ?? 0) + 1);
+  }
+
+  const pesanPerKelas = new Map<string, number>();
+  const siswaAktifPerKelas = new Map<string, Set<string>>();
+  for (const p of (hasilPoin.error
+    ? []
+    : (hasilPoin.data as unknown[]) ?? []) as unknown as {
+    kelas_id: string;
+    siswa_id: string;
+    poin_pesan: number | string;
+  }[]) {
+    const poinPesan = Number(p.poin_pesan);
+    pesanPerKelas.set(p.kelas_id, (pesanPerKelas.get(p.kelas_id) ?? 0) + poinPesan);
+    if (poinPesan > 0) {
+      if (!siswaAktifPerKelas.has(p.kelas_id)) {
+        siswaAktifPerKelas.set(p.kelas_id, new Set());
+      }
+      siswaAktifPerKelas.get(p.kelas_id)!.add(p.siswa_id);
+    }
+  }
+
+  return {
+    ada: true,
+    id: topik.id,
+    dibuka_at: topik.dibuka_at,
+    ditutup_at: topik.ditutup_at,
+    kelas: kelasList
+      .map((k) => ({
+        kelasId: k.kelas_id,
+        kelasNama: k.kelas?.nama ?? "—",
+        jumlahSiswa: siswaPerKelas.get(k.kelas_id) ?? 0,
+        jumlahSiswaAktif: siswaAktifPerKelas.get(k.kelas_id)?.size ?? 0,
+        jumlahPesanTeks: pesanPerKelas.get(k.kelas_id) ?? 0,
+      }))
+      .sort((a, b) => a.kelasNama.localeCompare(b.kelasNama)),
+  };
+}
+
+/** Ringkasan forum satu event di SATU jenjang (jalur admin lintas
+ *  jenjang). Read-only, seperti seluruh isi berkas ini. */
+export async function daftarForumAdmin(
+  jenjang: Jenjang,
+  eventId: string
+): Promise<ForumRingkas> {
+  const client = createAdminClient(jenjang);
+  return ambilRingkasForum(client, eventId);
 }
 
 // ---------------------------------------------------------------------------

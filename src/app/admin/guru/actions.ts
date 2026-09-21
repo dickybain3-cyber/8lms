@@ -418,6 +418,19 @@ export async function resetPasswordGuru(
     };
   }
 
+  // Penanda untuk unduhan detail guru (Tahap 2, migrasi 0017) — supaya
+  // bedanya "masih password awal" dan "sudah pernah direset admin"
+  // kelihatan tanpa harus membaca log satu-satu. Sengaja TIDAK dicek
+  // errornya (sama seperti penanda password_diganti_at di terapkanPassword
+  // pada profil-guru.ts): password aslinya SUDAH berhasil diganti di baris
+  // di atas, jadi kegagalan menulis kolom ini semata (mis. migrasi 0017
+  // belum dijalankan di project ini) tidak boleh membuat reset password
+  // dilaporkan gagal ke admin.
+  await admin
+    .from("guru")
+    .update({ password_status: "direset_admin" })
+    .eq("id", targetGuru.id);
+
   const { error: logError } = await sessionSupabase.rpc(
     "catat_log_aktivitas",
     {

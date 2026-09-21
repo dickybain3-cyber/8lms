@@ -207,10 +207,17 @@ function KartuEvent({
  *
  * KEGIATAN KOSONG ADALAH PERINGATAN, TAPI CUMA UNTUK MESIN YANG SUDAH
  * SIAP. Event ujian tanpa mapel dan event tugas tanpa tugas sama-sama
- * tidak bisa dipakai siswa — keduanya pantas ditandai merah. Event forum
- * tanpa isi tidak: fiturnya memang belum dibangun, dan menuduhnya kosong
- * berarti menyuruh guru memperbaiki sesuatu yang belum bisa diperbaiki
- * siapa pun.
+ * tidak bisa dipakai siswa — keduanya pantas ditandai merah. Sejak
+ * Tahap 5 tidak ada lagi mesin yang belum siap, jadi cabang `!def.siap`
+ * di bawah ini dipertahankan sebagai jaring pengaman untuk jenis event
+ * MASA DEPAN, bukan untuk forum lagi.
+ *
+ * ── FORUM DIHITUNG BEDA DARI MAPEL/TUGAS ──
+ *
+ * `jumlah_forum_topik` cuma bernilai 0 atau 1 (lihat komentarnya di
+ * `admin-multi-event.ts`) — bukan "berapa banyak", tapi "sudah dibuat
+ * atau belum". Jadi labelnya bukan "1 forum" (aneh, forum bukan barang
+ * yang dihitung), melainkan status ya/tidak.
  */
 function LencanaIsi({ event }: { event: EventAdmin }) {
   const def = definisiJenisEvent(event.jenis);
@@ -219,6 +226,26 @@ function LencanaIsi({ event }: { event: EventAdmin }) {
     return (
       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.68rem] font-semibold text-slate-500">
         Menyusul di Tahap {def.tahapRencana}
+      </span>
+    );
+  }
+
+  if (def.mesin === "forum") {
+    const belumDibuat = event.jumlah_forum_topik === 0;
+    return (
+      <span
+        className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold ${
+          belumDibuat ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-600"
+        }`}
+      >
+        {belumDibuat ? (
+          <>
+            <i className="fas fa-triangle-exclamation mr-1" aria-hidden />
+            Belum ada forum
+          </>
+        ) : (
+          "Forum dibuat"
+        )}
       </span>
     );
   }

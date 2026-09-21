@@ -15,6 +15,7 @@ import {
   formatSisaSingkat,
   formatTenggat,
 } from "@/lib/tugas";
+import { faseForum } from "@/lib/forum";
 
 export type MapelRow = {
   id: string;
@@ -37,6 +38,13 @@ export type TugasRow = {
   tenggat: string;
   izinkan_terlambat: boolean;
   minta_berkas: boolean;
+  event: { nama: string } | null;
+};
+
+export type ForumRow = {
+  id: string;
+  dibuka_at: string;
+  ditutup_at: string;
   event: { nama: string } | null;
 };
 
@@ -70,12 +78,23 @@ function labelKerjakan(m: MapelRow): string {
  * dan kartu tugas bisa berpindah kolom pada detik yang berbeda — kecil,
  * tapi persis jenis ketidakkonsistenan yang membuat siswa tidak lagi
  * percaya pada apa yang dia lihat di layar.
+ *
+ * ── TAHAP 5: FORUM IKUT DI JAM YANG SAMA, TAPI TIDAK PUNYA "RIWAYAT
+ *    PENGERJAAN" SEPERTI TUGAS/UJIAN ──
+ *
+ * Forum tidak dikerjakan atau dikumpulkan — dibuka, dibaca, dibalas.
+ * Jadi pengelompokannya cuma dua sumbu waktu (`faseForum`: belum_buka /
+ * berlangsung / ditutup), bukan tiga seperti tugas (yang juga melacak
+ * "sudah dikumpulkan atau belum"). Forum yang ditutup tetap muncul di
+ * Riwayat supaya siswa masih bisa membaca ulang obrolannya, tapi tidak
+ * ada status "dikerjakan/tidak" untuk ditampilkan di situ.
  */
 export default function DashboardSiswaClient({
   mapelList,
   submittedByMapel,
   tugasList,
   pengumpulanByTugas,
+  forumList,
   waktuServer,
   pesan,
 }: {
@@ -83,6 +102,7 @@ export default function DashboardSiswaClient({
   submittedByMapel: Record<string, string | null>;
   tugasList: TugasRow[];
   pengumpulanByTugas: Record<string, PengumpulanRingkasRow>;
+  forumList: ForumRow[];
   waktuServer: string;
   pesan: string | null;
 }) {
@@ -163,6 +183,33 @@ export default function DashboardSiswaClient({
   );
 
   const adaFiturTugas = tugasList.length > 0;
+
+  // ── Forum ──
+  //
+  // Dua sumbu saja (bukan tiga seperti tugas) — lihat penjelasan di
+  // kepala komponen ini.
+  const forumAktif: ForumRow[] = [];
+  const forumMendatang: ForumRow[] = [];
+  const forumSelesai: ForumRow[] = [];
+
+  for (const f of forumList) {
+    const fase = faseForum(f, now);
+    if (fase === "berlangsung") forumAktif.push(f);
+    else if (fase === "belum_buka") forumMendatang.push(f);
+    else forumSelesai.push(f);
+  }
+
+  forumAktif.sort(
+    (a, b) => new Date(a.ditutup_at).getTime() - new Date(b.ditutup_at).getTime()
+  );
+  forumMendatang.sort(
+    (a, b) => new Date(a.dibuka_at).getTime() - new Date(b.dibuka_at).getTime()
+  );
+  forumSelesai.sort(
+    (a, b) => new Date(b.ditutup_at).getTime() - new Date(a.ditutup_at).getTime()
+  );
+
+  const adaFiturForum = forumList.length > 0;
 
   return (
     <div className="space-y-6">
@@ -246,13 +293,44 @@ export default function DashboardSiswaClient({
             </section>
           )}
 
+          {/*
+            Sama alasannya dengan seksi Tugas: seksi ini hanya muncul kalau
+            memang ada forum untuk siswa ini — di jenjang yang migrasi
+            0020-nya belum jalan, daftarnya selalu kosong.
+          */}
+          {adaFiturForum && (
+            <section>
+              <JudulSeksi ikon="fa-comments" warna="text-[--primary]">
+                Forum Diskusi
+              </JudulSeksi>
+
+              {forumAktif.length === 0 ? (
+                <div className="card-mewah px-5 py-8 text-center text-slate-500">
+                  <p className="text-sm font-medium">
+                    {forumMendatang.length > 0
+                      ? `Belum ada forum yang bisa dibuka. Forum "${forumMendatang[0].event?.nama ?? "Diskusi"}" dibuka ${formatTenggat(forumMendatang[0].dibuka_at)}.`
+                      : "Tidak ada forum yang sedang berlangsung."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {forumAktif.map((f) => (
+                    <ForumCard key={f.id} forum={f} now={now} />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           <section>
             <JudulSeksi ikon="fa-clock-rotate-left" warna="text-[--success]">
               Riwayat
             </JudulSeksi>
 
             <div className="card-mewah p-4">
-              {riwayat.length === 0 && tugasSelesai.length === 0 ? (
+              {riwayat.length === 0 &&
+              tugasSelesai.length === 0 &&
+              forumSelesai.length === 0 ? (
                 <div className="py-8 text-center">
                   <i
                     className="fas fa-folder-open mb-2 block text-3xl text-slate-300"
@@ -344,6 +422,30 @@ export default function DashboardSiswaClient({
                       </Link>
                     );
                   })}
+
+                  {forumSelesai.map((f) => (
+                    <Link
+                      key={f.id}
+                      href={`/siswa/forum/${f.id}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-paper px-4 py-3 transition-colors hover:border-slate-200"
+                    >
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-400">
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">
+                            Forum
+                          </span>
+                          {f.event?.nama ?? "Kegiatan"}
+                        </p>
+                        <p className="text-[0.72rem] text-slate-500">
+                          Ditutup {formatTenggat(f.ditutup_at)}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.7rem] font-semibold text-slate-500">
+                        <i className="fas fa-book-open mr-1" aria-hidden />
+                        Baca ulang
+                      </span>
+                    </Link>
+                  ))}
                 </div>
               )}
             </div>
@@ -357,7 +459,9 @@ export default function DashboardSiswaClient({
             </JudulSeksi>
 
             <div className="card-mewah p-5">
-              {akanDatang.length === 0 && tugasMendatang.length === 0 ? (
+              {akanDatang.length === 0 &&
+              tugasMendatang.length === 0 &&
+              forumMendatang.length === 0 ? (
                 <p className="py-5 text-center text-sm font-medium text-slate-400">
                   Belum ada yang dijadwalkan.
                 </p>
@@ -411,6 +515,24 @@ export default function DashboardSiswaClient({
                           aria-hidden
                         />
                         Tugas · dibuka {formatTenggat(t.dibuka_at)}
+                      </p>
+                    </li>
+                  ))}
+
+                  {forumMendatang.map((f) => (
+                    <li
+                      key={f.id}
+                      className="border-b border-dashed border-slate-200 pb-3 last:border-0 last:pb-0"
+                    >
+                      <p className="font-serif text-sm font-semibold text-ink">
+                        {f.event?.nama ?? "Forum"}
+                      </p>
+                      <p className="mt-0.5 text-[0.75rem] text-slate-500">
+                        <i
+                          className="fas fa-comments mr-1.5 text-slate-400"
+                          aria-hidden
+                        />
+                        Forum · dibuka {formatTenggat(f.dibuka_at)}
                       </p>
                     </li>
                   ))}
@@ -572,6 +694,46 @@ function TugasCard({
         className="rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-light"
       >
         {sudahKumpul ? "Lihat" : "Kerjakan"}
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * Kartu forum. Tidak ada status "sudah/belum dikerjakan" seperti kartu
+ * tugas — forum tidak punya keadaan selesai untuk SATU siswa, cuma
+ * jendela waktu yang sama untuk sekelas. Yang ditonjolkan cuma satu
+ * angka: berapa lama lagi sampai ditutup, supaya siswa tahu kapan
+ * kesempatan bicaranya habis.
+ */
+function ForumCard({ forum, now }: { forum: ForumRow; now: number }) {
+  const sisaMs = new Date(forum.ditutup_at).getTime() - now;
+
+  return (
+    <div className="card-mewah flex flex-wrap items-center justify-between gap-4 border-l-4 border-l-[--primary] p-5">
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-400">
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">
+            Forum
+          </span>
+        </p>
+        <p className="font-serif text-lg font-bold text-ink">
+          {forum.event?.nama ?? "Forum Diskusi"}
+        </p>
+        <p className="mt-1 text-[0.78rem] text-slate-500">
+          <i className="fas fa-hourglass-end mr-1.5 text-slate-400" aria-hidden />
+          Ditutup {formatTenggat(forum.ditutup_at)}
+          <span className="ml-1 font-medium text-slate-600">
+            · sisa {formatSisaSingkat(sisaMs)}
+          </span>
+        </p>
+      </div>
+
+      <Link
+        href={`/siswa/forum/${forum.id}`}
+        className="rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-light"
+      >
+        Buka
       </Link>
     </div>
   );

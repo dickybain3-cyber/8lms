@@ -93,10 +93,7 @@ export default async function TugasDetailPage({
     )
     .eq("tugas_id", params.tugasId);
 
-  const petaPengumpulan = new Map<
-    string,
-    NonNullable<typeof pengumpulanList>[number]
-  >();
+  const petaPengumpulan = new Map<string, (typeof pengumpulanList)[number]>();
   for (const p of pengumpulanList ?? []) {
     petaPengumpulan.set(p.siswa_id as string, p);
   }

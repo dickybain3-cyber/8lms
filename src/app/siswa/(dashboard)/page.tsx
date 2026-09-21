@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import DashboardSiswaClient, {
   type MapelRow,
   type TugasRow,
+  type ForumRow,
 } from "./DashboardSiswaClient";
 
 /**
@@ -39,6 +40,15 @@ import DashboardSiswaClient, {
  * dipasang di jenjangnya. Jadi: gagal -> daftar tugas kosong, sisanya
  * jalan seperti biasa. Pola yang sama persis dipakai untuk kolom
  * `event.jenis` di Tahap 3.
+ *
+ * ── TAMBAHAN TAHAP 5: FORUM ──
+ *
+ * Sama polanya dengan tugas: tabel `forum_topik` baru ada sejak migrasi
+ * 0020, kegagalannya diabaikan dengan alasan yang sama persis. Tidak
+ * ada query `forum_pesan` di sini sama sekali — dashboard cuma perlu
+ * tahu forum MANA yang boleh dibuka siswa ini, bukan isi obrolannya;
+ * RLS `forum_topik_select_siswa` sudah otomatis membatasi ke forum yang
+ * kelasnya ditautkan ke siswa yang login.
  */
 export default async function SiswaDashboardPage({
   searchParams,
@@ -113,12 +123,23 @@ export default async function SiswaDashboardPage({
     };
   }
 
+  // ── Forum (0020). Gagal = kosong, lihat penjelasan di atas. ──
+  const hasilForum = await supabase
+    .from("forum_topik")
+    .select("id, dibuka_at, ditutup_at, event(nama)")
+    .order("ditutup_at");
+
+  const forumList = (
+    hasilForum.error ? [] : (hasilForum.data ?? [])
+  ) as unknown as ForumRow[];
+
   return (
     <DashboardSiswaClient
       mapelList={mapelList}
       submittedByMapel={submittedByMapel}
       tugasList={tugasList}
       pengumpulanByTugas={pengumpulanByTugas}
+      forumList={forumList}
       waktuServer={new Date().toISOString()}
       pesan={searchParams.pesan ?? null}
     />

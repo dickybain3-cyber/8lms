@@ -10,9 +10,9 @@
  *
  * Sampai Tahap 3, file ini cuma punya satu sumbu biner: `pakaiMesinUjian`
  * (true = mapel/soal, false = "belum ada apa-apa"). Itu cukup selama cuma
- * ada SATU mesin. Sekarang ada dua yang jalan (ujian dan tugas) dan satu
- * yang belum (forum), jadi satu boolean tidak lagi bisa menjawab dua
- * pertanyaan yang berbeda:
+ * ada SATU mesin. Sejak Tahap 4 ada lebih dari satu mesin (dan sejak
+ * Tahap 5, ketiganya jalan sekaligus), jadi satu boolean tidak lagi bisa
+ * menjawab dua pertanyaan yang berbeda:
  *
  *   "Mesin apa yang dipakai jenis ini?"        -> `mesin`
  *   "Apakah fiturnya sudah bisa dipakai?"      -> `siap`
@@ -21,6 +21,12 @@
  * seperti sebelumnya (mapel/soal atau bukan) — dia dipakai `createMapel`
  * dan trigger DB 0018 sebagai penjaga, dan mengubah artinya diam-diam
  * adalah cara paling rapi untuk melubangi penjaga itu.
+ *
+ * ── PERUBAHAN TAHAP 5 ──
+ *
+ * Ketiga mesin sekarang jalan. `forum` pindah dari `siap: false` menjadi
+ * `siap: true` — lihat 0020_forum.sql untuk skemanya. `pakaiMesinForum()`
+ * ditambahkan mengikuti pola persis `pakaiMesinTugas()`.
  */
 
 import type { JenisEvent } from "@/types";
@@ -43,7 +49,7 @@ export interface DefinisiJenisEvent {
    * Mesin mana yang menyimpan isinya:
    *   "ujian" -> mapel/soal/jawaban_siswa/nilai   (0002-0007)
    *   "tugas" -> tugas/tugas_kelas/pengumpulan_tugas (0019, Tahap 4)
-   *   "forum" -> forum_topik                      (Tahap 5, belum ada)
+   *   "forum" -> forum_topik/forum_kelas/forum_pesan/forum_poin (0020, Tahap 5)
    */
   mesin: MesinKegiatan;
   /** true = mesin ujian (mapel/soal). Dipertahankan apa adanya dari Tahap
@@ -99,11 +105,12 @@ export const DAFTAR_JENIS_EVENT: DefinisiJenisEvent[] = [
     label: "Forum Diskusi",
     labelSiswa: "Forum",
     ikon: "comments",
-    deskripsi: "Diskusi kelas dengan poin keaktifan — menyusul di Tahap 5.",
+    deskripsi:
+      "Diskusi kelas dengan poin keaktifan — pesan teks bernilai poin, sticker/emoticon tidak.",
     mesin: "forum",
     pakaiMesinUjian: false,
-    siap: false,
-    tahapRencana: 5,
+    siap: true,
+    tahapRencana: null,
   },
 ];
 
@@ -133,7 +140,16 @@ export function pakaiMesinTugas(jenis: JenisEvent): boolean {
   return PETA_JENIS_EVENT[jenis].mesin === "tugas";
 }
 
-/** false = halaman pengisian kontennya belum dibangun (forum). */
+/** Cermin `pakaiMesinTugas` untuk Tahap 5 — dipakai `createForumTopik` dan
+ *  dicerminkan trigger DB `cegah_forum_di_event_bukan_forum` (0020). */
+export function pakaiMesinForum(jenis: JenisEvent): boolean {
+  return PETA_JENIS_EVENT[jenis].mesin === "forum";
+}
+
+/** false = halaman pengisian kontennya belum dibangun. Sejak Tahap 5,
+ *  semua jenis event yang ada bernilai true — dipertahankan (bukan
+ *  dihapus) supaya jenis event baru di masa depan punya jalan yang sama
+ *  untuk ditandai "belum siap" tanpa mengubah bentuk tipe ini lagi. */
 export function jenisEventSiap(jenis: JenisEvent): boolean {
   return PETA_JENIS_EVENT[jenis].siap;
 }

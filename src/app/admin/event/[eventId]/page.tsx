@@ -6,10 +6,12 @@ import { JENJANG_LABEL, parseJenjang, type Jenjang } from "@/lib/jenjang";
 import {
   ambilRingkasTugas,
   daftarTugasAdmin,
+  ambilRingkasForum,
+  daftarForumAdmin,
   detailEventAdmin,
-  type KlienTugasMentah,
   type MapelAdminRingkas,
   type TugasRingkas,
+  type ForumRingkas,
 } from "@/lib/supabase/admin-multi-event";
 import { statusEvent } from "@/lib/event-status";
 import {
@@ -17,9 +19,11 @@ import {
   jenisEventValid,
   pakaiMesinUjian,
   pakaiMesinTugas,
+  pakaiMesinForum,
   type JenisEvent,
 } from "@/lib/jenis-event";
 import { faseTugas, formatTenggat } from "@/lib/tugas";
+import { faseForum } from "@/lib/forum";
 import { hitungDampakHapusEvent } from "../actions";
 import DeleteEventButton from "./DeleteEventButton";
 import {
@@ -59,6 +63,19 @@ import {
  * Aturan yang SAMA seperti mapel juga berlaku untuk tugas di jalur admin
  * lintas jenjang: DITAMPILKAN (baca saja, lewat service role) tapi tanpa
  * tombol tambah/edit/hapus, karena Server Action-nya cookie-bound.
+ *
+ * ── PERUBAHAN TAHAP 5 ──
+ *
+ * "Isi" sekarang punya mesin KETIGA: FORUM. Berbeda dari mapel (banyak
+ * per event) dan tugas (banyak per event), forum dimodelkan sebagai SATU
+ * `forum_topik` yang menaungi banyak RUANG KELAS (lihat kepala
+ * 0020_forum.sql) — jadi `BagianForum` di bawah tidak menampilkan daftar
+ * "forum", melainkan kartu per KELAS TARGET yang membuka ruang obrolan
+ * kelas itu. Kartu "Forum menyusul Tahap 5" yang dulu tampil lewat
+ * `!def.siap` sudah tidak pernah dirender lagi — seluruh jenis event
+ * sekarang siap — tapi cabangnya SENGAJA dipertahankan di `IsiDetail`,
+ * bukan dihapus, supaya jenis event baru di masa depan yang belum siap
+ * fiturnya tetap punya jalan tampil yang sama.
  */
 function formatTanggal(iso: string) {
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -156,11 +173,12 @@ async function DetailGuru({
     : [];
 
   const tugas: TugasRingkas[] = pakaiMesinTugas(jenis)
-    ? await ambilRingkasTugas(
-        supabase as unknown as KlienTugasMentah,
-        eventId
-      )
+    ? await ambilRingkasTugas(supabase, eventId)
     : [];
+
+  const forum: ForumRingkas = pakaiMesinForum(jenis)
+    ? await ambilRingkasForum(supabase, eventId)
+    : { ada: false, id: null, dibuka_at: null, ditutup_at: null, kelas: [] };
 
   return (
     <IsiDetail
@@ -174,6 +192,7 @@ async function DetailGuru({
       }}
       mapel={mapel}
       tugas={tugas}
+      forum={forum}
       jenjang={null}
       aksiEvent={
         <>
@@ -212,6 +231,23 @@ async function DetailGuru({
               Tambah Tugas
             </Link>
           )}
+          {/*
+            Forum cuma boleh SATU per event (lihat kepala 0020_forum.sql),
+            jadi tombolnya berubah tergantung apakah forum_topik-nya sudah
+            ada — beda dari "Tambah Tugas" yang selalu membuat baris baru.
+          */}
+          {pakaiMesinForum(jenis) &&
+            (forum.ada ? (
+              <Link href={`/admin/event/${event.id}/forum/edit`} className={TOMBOL_BIASA}>
+                <i className="fas fa-gear" aria-hidden />
+                Pengaturan Forum
+              </Link>
+            ) : (
+              <Link href={`/admin/event/${event.id}/forum/baru`} className={TOMBOL_UTAMA}>
+                <i className="fas fa-plus" aria-hidden />
+                Buat Forum
+              </Link>
+            ))}
         </>
       }
     />
@@ -274,11 +310,16 @@ async function DetailAdmin({
     ? await daftarTugasAdmin(jenjang, eventId)
     : [];
 
+  const forum: ForumRingkas = pakaiMesinForum(event.jenis)
+    ? await daftarForumAdmin(jenjang, eventId)
+    : { ada: false, id: null, dibuka_at: null, ditutup_at: null, kelas: [] };
+
   return (
     <IsiDetail
       event={event}
       mapel={mapel}
       tugas={tugas}
+      forum={forum}
       jenjang={jenjang}
       aksiEvent={
         isAdmin && pakaiMesinUjian(event.jenis) ? (
@@ -301,6 +342,7 @@ function IsiDetail({
   event,
   mapel,
   tugas,
+  forum,
   jenjang,
   aksiEvent,
 }: {
@@ -314,6 +356,7 @@ function IsiDetail({
   };
   mapel: MapelAdminRingkas[];
   tugas: TugasRingkas[];
+  forum: ForumRingkas;
   jenjang: Jenjang | null;
   aksiEvent: React.ReactNode;
 }) {
@@ -359,6 +402,10 @@ function IsiDetail({
             <>
               <strong>tenggat</strong> tugas yang mau dibuka
             </>
+          ) : def.mesin === "forum" ? (
+            <>
+              <strong>jam ditutup</strong> forum lewat Pengaturan Forum
+            </>
           ) : (
             <>
               <strong>jam ujian dibuka &amp; ditutup</strong> di mapel yang mau
@@ -389,7 +436,21 @@ function IsiDetail({
         />
       )}
 
-      {/* Forum — Tahap 5. Satu-satunya jenis yang masih menunggu. */}
+      {def.mesin === "forum" && (
+        <BagianForum
+          eventId={event.id}
+          forum={forum}
+          jenjang={jenjang}
+          suffix={suffix}
+        />
+      )}
+
+      {/*
+        Jaring pengaman untuk jenis event MASA DEPAN yang belum punya
+        halamannya — bukan untuk forum lagi (forum sudah siap sejak
+        Tahap 5). Dipertahankan, bukan dihapus, persis alasannya
+        dijelaskan di kepala berkas ini.
+      */}
       {!def.siap && (
         <Kosong
           ikon={`fa-${def.ikon}`}
@@ -748,6 +809,161 @@ function KartuTugas({
           ))
         )}
       </div>
+    </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tahap 5 — forum
+// ---------------------------------------------------------------------------
+
+/**
+ * Berbeda dari `BagianMapel`/`BagianTugas`: yang dirender sebagai kartu
+ * di sini bukan "daftar forum" (cuma ada nol atau satu forum per event —
+ * lihat kepala 0020_forum.sql), melainkan daftar RUANG KELAS milik satu-
+ * satunya forum itu. Klik satu kartu langsung membuka ruang obrolan kelas
+ * itu — persis alur yang diminta: pilih kelas dulu, baru masuk ke bubble
+ * chat-nya.
+ */
+function BagianForum({
+  eventId,
+  forum,
+  jenjang,
+  suffix,
+}: {
+  eventId: string;
+  forum: ForumRingkas;
+  jenjang: Jenjang | null;
+  suffix: string;
+}) {
+  if (!forum.ada) {
+    return (
+      <Kosong
+        ikon="fa-comments"
+        judul="Belum ada forum"
+        keterangan="Forum diskusi butuh jadwal buka/tutup dan minimal satu kelas target sebelum siswa bisa melihatnya. Buat yang pertama."
+        aksi={
+          jenjang ? undefined : (
+            <Link href={`/admin/event/${eventId}/forum/baru`} className={TOMBOL_UTAMA}>
+              <i className="fas fa-plus" aria-hidden />
+              Buat Forum
+            </Link>
+          )
+        }
+      />
+    );
+  }
+
+  const totalAktif = forum.kelas.reduce((n, k) => n + k.jumlahSiswaAktif, 0);
+  const totalPesan = forum.kelas.reduce((n, k) => n + k.jumlahPesanTeks, 0);
+
+  return (
+    <>
+      <BarisStatistik>
+        <Statistik label="Ruang kelas" nilai={forum.kelas.length} ikon="fa-users" warna="biru" />
+        <Statistik
+          label="Siswa sudah bicara"
+          nilai={totalAktif}
+          ikon="fa-comment-dots"
+          warna={totalAktif > 0 ? "hijau" : "abu"}
+        />
+        <Statistik label="Total chat" nilai={totalPesan} ikon="fa-message" warna="abu" />
+      </BarisStatistik>
+
+      {jenjang && (
+        <Info nada="info">
+          Database {JENJANG_LABEL[jenjang]}, tampilan baca saja. Membuka
+          ruang obrolan, membalas, dan memberi bonus poin hanya bisa
+          dilakukan dari akun guru jenjang ini.
+        </Info>
+      )}
+
+      {forum.kelas.length === 0 ? (
+        <Kosong
+          ikon="fa-user-slash"
+          judul="Belum ada kelas target"
+          keterangan="Forum ini sudah dibuat tapi belum ditautkan ke kelas mana pun, jadi belum terlihat oleh siswa. Buka Pengaturan Forum untuk memilih kelasnya."
+          aksi={
+            jenjang ? undefined : (
+              <Link href={`/admin/event/${eventId}/forum/edit`} className={TOMBOL_UTAMA}>
+                <i className="fas fa-gear" aria-hidden />
+                Pengaturan Forum
+              </Link>
+            )
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {forum.kelas.map((k) => (
+            <KartuKelasForum
+              key={k.kelasId}
+              eventId={eventId}
+              kelas={k}
+              dibukaAt={forum.dibuka_at as string}
+              ditutupAt={forum.ditutup_at as string}
+              suffix={suffix}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function KartuKelasForum({
+  eventId,
+  kelas,
+  dibukaAt,
+  ditutupAt,
+  suffix,
+}: {
+  eventId: string;
+  kelas: ForumRingkas["kelas"][number];
+  dibukaAt: string;
+  ditutupAt: string;
+  suffix: string;
+}) {
+  const fase = faseForum({ dibuka_at: dibukaAt, ditutup_at: ditutupAt }, Date.now());
+
+  const label =
+    fase === "berlangsung"
+      ? "Berlangsung"
+      : fase === "belum_buka"
+        ? "Terjadwal"
+        : "Ditutup";
+
+  const gaya =
+    fase === "berlangsung"
+      ? "bg-emerald-100 text-emerald-700"
+      : fase === "belum_buka"
+        ? "bg-amber-100 text-amber-700"
+        : "bg-slate-100 text-slate-500";
+
+  return (
+    <Link
+      href={`/admin/event/${eventId}/forum/${kelas.kelasId}${suffix}`}
+      className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-blue-600/10"
+    >
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <h2 className="min-w-0 font-serif text-lg font-bold leading-snug text-ink">
+          {kelas.kelasNama}
+        </h2>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wide ${gaya}`}
+        >
+          {label}
+        </span>
+      </div>
+
+      <p className="mb-3 flex items-center gap-1.5 text-sm text-slate-500">
+        <i className="fas fa-comment-dots text-xs" aria-hidden />
+        {kelas.jumlahSiswaAktif} dari {kelas.jumlahSiswa} siswa sudah bicara
+      </p>
+
+      <p className="mt-auto text-sm text-slate-600">
+        <strong className="text-ink">{kelas.jumlahPesanTeks}</strong> chat
+        terkumpul
+      </p>
     </Link>
   );
 }
