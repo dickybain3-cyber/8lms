@@ -12,6 +12,8 @@ import {
   type MapelAdminRingkas,
   type TugasRingkas,
   type ForumRingkas,
+  type KlienTugasMentah,
+  type KlienForumMentah,
 } from "@/lib/supabase/admin-multi-event";
 import { statusEvent } from "@/lib/event-status";
 import {
@@ -173,11 +175,11 @@ async function DetailGuru({
     : [];
 
   const tugas: TugasRingkas[] = pakaiMesinTugas(jenis)
-    ? await ambilRingkasTugas(supabase, eventId)
+    ? await ambilRingkasTugas(supabase as unknown as KlienTugasMentah, eventId)
     : [];
 
   const forum: ForumRingkas = pakaiMesinForum(jenis)
-    ? await ambilRingkasForum(supabase, eventId)
+    ? await ambilRingkasForum(supabase as unknown as KlienForumMentah, eventId)
     : { ada: false, id: null, dibuka_at: null, ditutup_at: null, kelas: [] };
 
   return (
