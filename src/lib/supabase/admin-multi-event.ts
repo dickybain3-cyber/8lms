@@ -452,7 +452,7 @@ export async function daftarTugasAdmin(
   eventId: string
 ): Promise<TugasRingkas[]> {
   const client = createAdminClient(jenjang);
-  return ambilRingkasTugas(client, eventId);
+  return ambilRingkasTugas(client as unknown as KlienTugasMentah, eventId);
 }
 
 // ---------------------------------------------------------------------------
@@ -637,7 +637,7 @@ export async function daftarForumAdmin(
   eventId: string
 ): Promise<ForumRingkas> {
   const client = createAdminClient(jenjang);
-  return ambilRingkasForum(client, eventId);
+  return ambilRingkasForum(client as unknown as KlienForumMentah, eventId);
 }
 
 // ---------------------------------------------------------------------------
