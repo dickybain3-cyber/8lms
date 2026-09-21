@@ -423,7 +423,7 @@ export async function daftarTugasAdmin(
   eventId: string
 ): Promise<TugasRingkas[]> {
   const client = createAdminClient(jenjang);
-  return ambilRingkasTugas(client, eventId);
+  return ambilRingkasTugas(client as unknown as KlienTugasMentah, eventId);
 }
 
 // ---------------------------------------------------------------------------

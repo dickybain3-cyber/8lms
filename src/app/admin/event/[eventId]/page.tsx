@@ -7,6 +7,7 @@ import {
   ambilRingkasTugas,
   daftarTugasAdmin,
   detailEventAdmin,
+  type KlienTugasMentah,
   type MapelAdminRingkas,
   type TugasRingkas,
 } from "@/lib/supabase/admin-multi-event";
@@ -155,7 +156,10 @@ async function DetailGuru({
     : [];
 
   const tugas: TugasRingkas[] = pakaiMesinTugas(jenis)
-    ? await ambilRingkasTugas(supabase, eventId)
+    ? await ambilRingkasTugas(
+        supabase as unknown as KlienTugasMentah,
+        eventId
+      )
     : [];
 
   return (
