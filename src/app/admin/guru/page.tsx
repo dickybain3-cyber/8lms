@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { getSesiGuru } from "@/lib/admin-guard";
 import ImportGuruForm from "./ImportGuruForm";
 import TambahGuruManualForm from "./TambahGuruManualForm";
 import AkunAksiButtons from "@/components/admin/AkunAksiButtons";
@@ -10,7 +9,6 @@ import {
 } from "./actions";
 import { cursorKeysetOr } from "@/lib/postgrest-filter";
 import ExportAkunCsvButton from "@/components/admin/ExportAkunCsvButton";
-import { UnduhDetailGuruButton } from "@/components/admin/ExportExcel";
 
 const BATAS_BARIS = 200;
 
@@ -43,11 +41,6 @@ export default async function GuruPage({
   };
 }) {
   const supabase = createClient();
-  // Tombol "Unduh detail guru" (Tahap 2) khusus is_admin — kolomnya berisi
-  // status password, jadi disembunyikan untuk guru biasa. Ini cuma soal
-  // TAMPILAN; penjaga sungguhan ada di server action `ambilDetailGuruSemuaJenjang()`
-  // (src/app/admin/actions-export.ts), bukan di sini.
-  const sesi = await getSesiGuru();
 
   const { count: totalGuru } = await supabase
     .from("guru")
@@ -119,19 +112,16 @@ export default async function GuruPage({
               Cari nama atau NIP untuk memeriksa akun yang sudah ada.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <ExportAkunCsvButton
-              headers={["Nama", "NIP", "Username", "Terdaftar"]}
-              rows={guruList.map((g) => [
-                g.nama,
-                g.nip ?? "",
-                g.username ?? "",
-                formatTanggal(g.created_at),
-              ])}
-              filename="akun-guru.csv"
-            />
-            {sesi.isAdmin && <UnduhDetailGuruButton />}
-          </div>
+          <ExportAkunCsvButton
+            headers={["Nama", "NIP", "Username", "Terdaftar"]}
+            rows={guruList.map((g) => [
+              g.nama,
+              g.nip ?? "",
+              g.username ?? "",
+              formatTanggal(g.created_at),
+            ])}
+            filename="akun-guru.csv"
+          />
         </div>
 
         <form
