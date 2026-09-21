@@ -4,8 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import {
   daftarSiswaSemuaJenjang,
   daftarGuruSemuaJenjang,
+  daftarGuruDetailSemuaJenjang,
   type BarisSiswaExport,
   type BarisGuruExport,
+  type BarisGuruDetailExport,
   type HasilJenjang,
 } from "@/lib/supabase/admin-multi";
 
@@ -69,4 +71,41 @@ export async function ambilGuruSemuaJenjang(): Promise<
   await pastikanAdmin();
   const hasil = await daftarGuruSemuaJenjang();
   return pisahkanHasil(hasil);
+}
+
+/**
+ * Dipanggil tombol "Unduh detail guru" (Tahap 2, /admin/guru). Beda dari
+ * `ambilGuruSemuaJenjang()` di atas: ini membawa nip/username/status
+ * password mentah untuk kolom Password di file unduhan, jadi aksesnya
+ * dicatat ke log_aktivitas — TANPA mencatat isi passwordnya sendiri, cuma
+ * jumlah baris dan jenjang mana yang gagal ditarik (kalau ada).
+ */
+export async function ambilDetailGuruSemuaJenjang(): Promise<
+  HasilExportLintasJenjang<BarisGuruDetailExport>
+> {
+  await pastikanAdmin();
+  const hasil = await daftarGuruDetailSemuaJenjang();
+  const dipisah = pisahkanHasil(hasil);
+
+  const sessionSupabase = createClient();
+  const { error: logError } = await sessionSupabase.rpc(
+    "catat_log_aktivitas",
+    {
+      p_aksi: "unduh_detail_guru",
+      p_entitas: "guru",
+      p_entitas_id: null,
+      p_detail: {
+        jumlah_baris: dipisah.baris.length,
+        jenjang_gagal: dipisah.jenjangGagal.map((j) => j.jenjang),
+      },
+    }
+  );
+  // Kegagalan mencatat log tidak membatalkan unduhan — admin sudah
+  // menerima datanya, dan ini konsisten dengan pola log_aktivitas lain
+  // di seluruh project (importGuruBatch, resetPasswordGuru, dst).
+  if (logError) {
+    console.error("Gagal mencatat log unduh_detail_guru:", logError.message);
+  }
+
+  return dipisah;
 }

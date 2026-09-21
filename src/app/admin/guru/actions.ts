@@ -148,10 +148,20 @@ export async function importGuruBatch(
     // Cek dobel dengan guru yang SUDAH ADA di database sebelum mencoba
     // createUser, supaya pesan errornya jelas ("NIP sudah dipakai guru
     // lain") bukan pesan mentah Supabase Auth soal email terdaftar.
+    //
+    // Yang dicocokkan NIP DAN username, bukan username saja. Dulu cukup
+    // username karena username = NIP selalu. Sejak guru bisa mengganti
+    // username sendiri (/admin/profil), guru ber-NIP 1965… bisa punya
+    // username "budi.s" — pengecekan username saja meloloskan NIP yang sama,
+    // dan barulah ditolak indeks unik `idx_guru_nip_unik` dengan pesan
+    // mentah SETELAH akun auth-nya terlanjur dibuat (lalu di-rollback).
+    // `.limit(1)` wajib: `.or()` bisa cocok dengan dua baris sekaligus, dan
+    // `maybeSingle()` mengembalikan error (bukan data) kalau barisnya banyak.
     const { data: nipSudahAda } = await admin
       .from("guru")
       .select("nama")
-      .eq("username", username)
+      .or(`nip.eq.${nip},username.eq.${username}`)
+      .limit(1)
       .maybeSingle();
 
     if (nipSudahAda) {
@@ -160,7 +170,7 @@ export async function importGuruBatch(
         nomorBaris: row.nomorBaris,
         nama,
         nip,
-        alasan: `NIP '${nip}' sudah dipakai guru lain (${nipSudahAda.nama}), dilewati.`,
+        alasan: `NIP '${nip}' bentrok dengan akun guru lain (${nipSudahAda.nama}) — NIP atau username-nya sama, dilewati.`,
       });
       continue;
     }
@@ -292,15 +302,17 @@ export async function tambahGuruManual(
     };
   }
 
+  // NIP DAN username — alasannya di `importGuruBatch` di atas.
   const { data: nipSudahAda } = await admin
     .from("guru")
     .select("nama")
-    .eq("username", username)
+    .or(`nip.eq.${nipBersih},username.eq.${username}`)
+    .limit(1)
     .maybeSingle();
   if (nipSudahAda) {
     return {
       success: false,
-      error: `NIP ini sudah dipakai guru lain (${nipSudahAda.nama}).`,
+      error: `NIP ini bentrok dengan akun guru lain (${nipSudahAda.nama}) — NIP atau username-nya sama.`,
     };
   }
 
@@ -405,6 +417,19 @@ export async function resetPasswordGuru(
       error: `Gagal reset password: ${updateError.message}.`,
     };
   }
+
+  // Penanda untuk unduhan detail guru (Tahap 2, migrasi 0017) — supaya
+  // bedanya "masih password awal" dan "sudah pernah direset admin"
+  // kelihatan tanpa harus membaca log satu-satu. Sengaja TIDAK dicek
+  // errornya (sama seperti penanda password_diganti_at di terapkanPassword
+  // pada profil-guru.ts): password aslinya SUDAH berhasil diganti di baris
+  // di atas, jadi kegagalan menulis kolom ini semata (mis. migrasi 0017
+  // belum dijalankan di project ini) tidak boleh membuat reset password
+  // dilaporkan gagal ke admin.
+  await admin
+    .from("guru")
+    .update({ password_status: "direset_admin" })
+    .eq("id", targetGuru.id);
 
   const { error: logError } = await sessionSupabase.rpc(
     "catat_log_aktivitas",

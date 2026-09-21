@@ -3,6 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  jenisEventValid,
+  pakaiMesinUjian,
+  labelJenisEvent,
+  type JenisEvent,
+} from "@/lib/jenis-event";
 
 export type ActionState = { error: string | null };
 
@@ -74,6 +80,43 @@ function validasiDurasi(
 }
 
 /**
+ * Ambil `jenis` sebuah event, dengan fallback dua-tahap seperti
+ * `getSesiGuru()`: kolom ini baru ada sejak migrasi 0018, jadi kalau
+ * project ini belum dimigrasi, selectnya akan gagal (kolom tidak ada).
+ * Fallback-nya `'asesmen_akhir'` — BUKAN tebakan sembarangan, itu memang
+ * `DEFAULT` kolomnya di migrasi 0018 dan satu-satunya jenis yang mungkin
+ * ada di baris manapun sebelum migrasi itu jalan. `null` (event tidak
+ * ditemukan) dibiarkan mengalir apa adanya ke pemanggil.
+ */
+async function ambilJenisEvent(
+  supabase: ReturnType<typeof createClient>,
+  eventId: string
+): Promise<JenisEvent | null> {
+  const lengkap = await supabase
+    .from("event")
+    .select("jenis")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (!lengkap.error) {
+    if (!lengkap.data) return null;
+    const jenis = lengkap.data.jenis;
+    return jenisEventValid(jenis) ? jenis : "asesmen_akhir";
+  }
+
+  // Kolom `jenis` belum ada di project ini (migrasi 0018 belum jalan) —
+  // cek keberadaan eventnya saja lewat kolom yang pasti ada, lalu anggap
+  // asesmen_akhir (lihat komentar di atas).
+  const { data: eventLama } = await supabase
+    .from("event")
+    .select("id")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  return eventLama ? "asesmen_akhir" : null;
+}
+
+/**
  * Buat event baru. RLS mengizinkan guru full access ke tabel `event`
  * (lihat is_guru() di migrasi 0005), jadi cukup pakai client Supabase
  * biasa yang sudah login — tidak perlu service role key.
@@ -87,6 +130,7 @@ export async function createEvent(
   const tglSelesai = String(formData.get("tgl_selesai") ?? "").trim();
   const kelasUtamaRaw = String(formData.get("kelas_utama") ?? "").trim();
   const kelasUtama = Number(kelasUtamaRaw);
+  const jenisRaw = String(formData.get("jenis") ?? "").trim();
 
   if (!nama) {
     return { error: "Nama event wajib diisi." };
@@ -99,6 +143,9 @@ export async function createEvent(
   }
   if (![7, 8, 9].includes(kelasUtama)) {
     return { error: "Pilih jenjang kelas utama (7, 8, atau 9)." };
+  }
+  if (!jenisEventValid(jenisRaw)) {
+    return { error: "Pilih jenis kegiatan." };
   }
 
   const supabase = createClient();
@@ -120,11 +167,47 @@ export async function createEvent(
       tgl_selesai: tglSelesai,
       kelas_utama: kelasUtama,
       created_by: guru?.id ?? null,
+      jenis: jenisRaw,
     })
     .select("id")
     .single();
 
-  if (error || !event) {
+  if (error) {
+    // Migrasi 0018 belum jalan di project ini -> kolom `jenis` tidak ada.
+    // Daripada mengunci guru tidak bisa membuat event SAMA SEKALI sampai
+    // migrasinya jalan, coba lagi tanpa kolom itu — event akan memakai
+    // DEFAULT lama tabelnya sendiri (tidak ada jenis) sampai migrasi
+    // dijalankan. Guru tetap diberi tahu supaya tidak bingung jenis yang
+    // dipilihnya "hilang".
+    if (jenisRaw !== "asesmen_akhir") {
+      return {
+        error:
+          "Gagal menyimpan jenis kegiatan — kemungkinan migrasi 0018 belum dijalankan di database ini. Hubungi admin sistem. (Kegiatan belum tersimpan.)",
+      };
+    }
+
+    const ulang = await supabase
+      .from("event")
+      .insert({
+        nama,
+        tgl_mulai: tglMulai,
+        tgl_selesai: tglSelesai,
+        kelas_utama: kelasUtama,
+        created_by: guru?.id ?? null,
+      })
+      .select("id")
+      .single();
+
+    if (ulang.error || !ulang.data) {
+      return { error: "Gagal menyimpan event. Coba lagi." };
+    }
+
+    revalidatePath("/admin/event");
+    revalidatePath("/admin");
+    redirect(`/admin/event/${ulang.data.id}`);
+  }
+
+  if (!event) {
     return { error: "Gagal menyimpan event. Coba lagi." };
   }
 
@@ -281,6 +364,20 @@ export async function createMapel(
   if (galatDurasi) return { error: galatDurasi };
 
   const supabase = createClient();
+
+  // Penjaga Tahap 3: mapel/soal cuma untuk event yang memakai mesin ujian
+  // (asesmen_akhir/kuis_harian). Ini duplikat sengaja dari trigger DB
+  // `trg_cegah_mapel_di_event_bukan_ujian` (migrasi 0018) — dicek juga di
+  // sini supaya pesan errornya ramah dibaca di form, bukan pesan Postgres
+  // mentah dari trigger.
+  const jenis = await ambilJenisEvent(supabase, eventId);
+  if (jenis !== null && !pakaiMesinUjian(jenis)) {
+    return {
+      error: `Event ini berjenis "${labelJenisEvent(
+        jenis
+      )}" — tidak memakai mapel/soal. Fitur untuk jenis ini menyusul di tahap berikutnya.`,
+    };
+  }
 
   const { data: mapel, error: mapelError } = await supabase
     .from("mapel")

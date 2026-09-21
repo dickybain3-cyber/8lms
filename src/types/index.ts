@@ -30,12 +30,20 @@ export interface Guru {
   created_at: string;
 }
 
+export type JenisEvent =
+  | "asesmen_akhir"
+  | "kuis_harian"
+  | "assignment"
+  | "forum";
+
 export interface Event {
   id: string;
   nama: string;
   tgl_mulai: string;
   tgl_selesai: string;
   kelas_utama: 7 | 8 | 9;
+  jenis: JenisEvent;
+  ditutup_at: string | null;
 }
 
 export interface Mapel {
@@ -143,4 +151,71 @@ export interface LogAktivitas {
   entitas_id: string | null;
   detail_jsonb: Record<string, unknown>;
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Tahap 4 — tugas (event.jenis = 'assignment'). Lihat 0019_tugas.sql.
+// ---------------------------------------------------------------------------
+
+/**
+ * Baris tabel `tugas`. Sejajar dengan `Mapel` di mesin ujian: punya jadwal
+ * sendiri (`dibuka_at`/`tenggat`) dan kelas target sendiri (`tugas_kelas`),
+ * TIDAK mewarisi tanggal event induknya.
+ *
+ * `minta_teks` / `minta_berkas`: apa yang diminta dari siswa. Minimal satu
+ * harus true (dijaga constraint `tugas_minta_sesuatu`). Keduanya boleh true
+ * sekaligus — mis. "tulis ringkasannya di kolom, lalu unggah foto hasil
+ * percobaanmu".
+ */
+export interface Tugas {
+  id: string;
+  event_id: string;
+  judul: string;
+  deskripsi: string;
+  dibuka_at: string;
+  tenggat: string;
+  skor_maksimal: number;
+  izinkan_terlambat: boolean;
+  minta_teks: boolean;
+  minta_berkas: boolean;
+  created_at: string;
+}
+
+export interface TugasKelas {
+  tugas_id: string;
+  kelas_id: string;
+}
+
+/**
+ * Baris tabel `pengumpulan_tugas` — gabungan "jawaban" dan "nilai" untuk
+ * satu siswa di satu tugas.
+ *
+ * DUA null YANG ARTINYA SANGAT BERBEDA, dan keduanya sering tertukar:
+ *
+ *   submitted_at === null  -> masih DRAF. Siswa sudah mengetik sesuatu
+ *     (atau mengunggah berkas) tapi belum menekan "Kumpulkan". Guru tidak
+ *     menghitungnya sebagai sudah mengumpulkan.
+ *
+ *   nilai === null         -> BELUM DINILAI. Beda dari `nilai === 0`, yang
+ *     berarti guru sudah membaca dan memberi nol. UI wajib membedakan
+ *     keduanya.
+ *
+ * Tidak ada kolom `terlambat`: dihitung dari `submitted_at > tugas.tenggat`
+ * saat ditampilkan, supaya guru yang memperpanjang tenggat otomatis
+ * memaafkan semua yang terlanjur lewat. Alasannya panjang, ada di kepala
+ * migrasi 0019.
+ */
+export interface PengumpulanTugas {
+  tugas_id: string;
+  siswa_id: string;
+  teks: string;
+  berkas_path: string | null;
+  berkas_nama: string | null;
+  berkas_ukuran: number | null;
+  submitted_at: string | null;
+  updated_at: string;
+  nilai: number | null;
+  catatan_guru: string | null;
+  dinilai_at: string | null;
+  dinilai_by: string | null;
 }

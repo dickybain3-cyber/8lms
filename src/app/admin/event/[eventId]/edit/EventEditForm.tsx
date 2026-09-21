@@ -2,6 +2,7 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { updateEvent, type ActionState } from "../../actions";
+import { definisiJenisEvent, type JenisEvent } from "@/lib/jenis-event";
 
 const initialState: ActionState = { error: null };
 
@@ -23,6 +24,7 @@ function SubmitButton() {
 
 export default function EventEditForm({
   event,
+  jenis,
 }: {
   event: {
     id: string;
@@ -31,12 +33,34 @@ export default function EventEditForm({
     tgl_selesai: string;
     kelas_utama: 7 | 8 | 9;
   };
+  jenis: JenisEvent;
 }) {
   const updateEventWithId = updateEvent.bind(null, event.id);
   const [state, formAction] = useFormState(updateEventWithId, initialState);
+  const def = definisiJenisEvent(jenis);
 
   return (
     <form action={formAction} className="max-w-lg space-y-5">
+      {/*
+        Jenis kegiatan SENGAJA tidak bisa diubah dari sini — event
+        berjenis assignment/forum akan (mulai Tahap 4/5) punya tabel
+        sendiri yang menaut ke event_id, dan mengizinkan ganti jenis
+        setelah dibuat berarti event bisa "berpindah mesin" sementara
+        datanya sendiri tertinggal di tabel yang lain. Kalau nanti
+        memang perlu, pastikan hanya boleh dipindah selama event masih
+        kosong (belum ada mapel/tugas/topik forum sama sekali).
+      */}
+      <div>
+        <span className="mb-1.5 block text-sm text-ink/70">
+          Jenis kegiatan
+        </span>
+        <div className="flex items-center gap-2 rounded-md border border-ink/10 bg-ink/[0.03] px-3.5 py-2.5 text-sm text-ink/70">
+          <i className={`fas fa-${def.ikon} text-ink/40`} aria-hidden />
+          {def.label}
+          <span className="ml-auto text-xs text-ink/40">Tidak bisa diubah</span>
+        </div>
+      </div>
+
       <div>
         <label htmlFor="nama" className="mb-1.5 block text-sm text-ink/70">
           Nama event

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { statusEvent } from "@/lib/event-status";
+import { jenisEventValid, type JenisEvent } from "@/lib/jenis-event";
 import EventEditForm from "./EventEditForm";
 
 export default async function EventEditPage({
@@ -11,15 +12,31 @@ export default async function EventEditPage({
 }) {
   const supabase = createClient();
 
-  const { data: event } = await supabase
+  // Dua tahap: kolom `jenis` (migrasi 0018) belum tentu ada di project ini.
+  const lengkap = await supabase
     .from("event")
-    .select("id, nama, tgl_mulai, tgl_selesai, kelas_utama")
+    .select("id, nama, tgl_mulai, tgl_selesai, kelas_utama, jenis")
     .eq("id", params.eventId)
     .maybeSingle();
+
+  const eventMentah = lengkap.error
+    ? await supabase
+        .from("event")
+        .select("id, nama, tgl_mulai, tgl_selesai, kelas_utama")
+        .eq("id", params.eventId)
+        .maybeSingle()
+    : lengkap;
+
+  const event = eventMentah.data;
 
   if (!event) {
     notFound();
   }
+
+  const jenisMentah = (event as { jenis?: unknown }).jenis;
+  const jenis: JenisEvent = jenisEventValid(jenisMentah)
+    ? jenisMentah
+    : "asesmen_akhir";
 
   const sudahSelesai =
     statusEvent(event.tgl_mulai, event.tgl_selesai) === "selesai";
@@ -43,7 +60,7 @@ export default async function EventEditPage({
           dibuka — jendela ujian siswa mengikuti jadwal mapel.
         </p>
       )}
-      <EventEditForm event={event} />
+      <EventEditForm event={event} jenis={jenis} />
     </div>
   );
 }

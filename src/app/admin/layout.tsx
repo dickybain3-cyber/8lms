@@ -21,6 +21,7 @@ export default async function AdminLayout({
       namaGuru={sesi.nama}
       jenjang={sesi.jenjang}
       isAdmin={sesi.isAdmin}
+      fotoUrl={sesi.fotoUrl}
     >
       {children}
     </AdminShell>

@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import LogoutButton from "@/components/LogoutButton";
+import AvatarGuru from "@/components/AvatarGuru";
 import JenjangSwitcherGlobal from "@/components/admin/JenjangSwitcherGlobal";
 import NavigasiProgress from "@/components/admin/NavigasiProgress";
 import { LOGO_URL, SEKOLAH } from "@/lib/branding";
@@ -91,6 +92,14 @@ const MENU: (MenuTunggal | MenuGrup)[] = [
     label: "Log Aktivitas",
     ikon: "fa-clock-rotate-left",
   },
+  // Profil sendiri (foto, username, password). Untuk SEMUA guru — bukan
+  // `adminSaja`: halaman ini hanya pernah menyentuh akun si pemakainya.
+  {
+    jenis: "tunggal",
+    href: "/admin/profil",
+    label: "Profil Saya",
+    ikon: "fa-user-gear",
+  },
 ];
 
 /**
@@ -119,10 +128,13 @@ export default function AdminShell({
   namaGuru,
   jenjang,
   isAdmin,
+  fotoUrl,
 }: {
   children: React.ReactNode;
   userEmail?: string | null;
   namaGuru?: string | null;
+  /** `guru.foto_url` (migrasi 0016). Kosong → avatar bulat bawaan. */
+  fotoUrl?: string | null;
   /** Jenjang project yang sedang aktif — sumbernya cookie `lms_jenjang`. */
   jenjang?: Jenjang | null;
   /** `guru.is_admin` (migrasi 0011) — penentu akses lintas jenjang. */
@@ -174,6 +186,13 @@ export default function AdminShell({
         <span className="text-sm font-bold text-white">
           {SEKOLAH.namaPendek}
         </span>
+        <Link
+          href="/admin/profil"
+          aria-label="Buka profil saya"
+          className="ml-auto rounded-full ring-2 ring-white/30 transition-shadow hover:ring-white/60"
+        >
+          <AvatarGuru fotoUrl={fotoUrl} nama={namaGuru} ukuran={34} />
+        </Link>
       </div>
 
       {/* Lapisan gelap di belakang laci (HP saja) */}
@@ -324,7 +343,34 @@ export default function AdminShell({
               Panel pengelolaan {SEKOLAH.namaPendek}
             </p>
           </div>
-          <i className="fas fa-bell text-lg text-[--accent]" aria-hidden />
+          <div className="flex items-center gap-4">
+            <i className="fas fa-bell text-lg text-[--accent]" aria-hidden />
+            {/*
+              Foto profil di pojok kanan atas, tempat orang biasanya mencarinya.
+              Seluruh blok adalah tautan ke /admin/profil. Teks peran disembunyikan
+              di layar sempit — namanya sudah ada di sapaan sebelah kiri.
+            */}
+            <Link
+              href="/admin/profil"
+              aria-label="Buka profil saya"
+              className="group flex items-center gap-2.5 rounded-full py-1 pl-1 pr-1 transition-colors hover:bg-slate-100 sm:pr-3"
+            >
+              <AvatarGuru
+                fotoUrl={fotoUrl}
+                nama={namaGuru}
+                ukuran={40}
+                className="ring-2 ring-slate-100 transition-shadow group-hover:ring-[--accent]"
+              />
+              <span className="hidden text-left leading-tight sm:block">
+                <span className="block text-[0.8rem] font-semibold text-slate-700">
+                  Profil saya
+                </span>
+                <span className="block text-[0.68rem] text-slate-400">
+                  {isAdmin ? "Administrator" : "Guru"}
+                </span>
+              </span>
+            </Link>
+          </div>
         </header>
 
         {/*

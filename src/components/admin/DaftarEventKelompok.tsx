@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { EventAdmin } from "@/lib/supabase/admin-multi-event";
 import type { Jenjang } from "@/lib/jenjang";
+import { definisiJenisEvent } from "@/lib/jenis-event";
 import {
   kelompokkanEvent,
   URUTAN_STATUS,
@@ -87,12 +88,12 @@ export default function DaftarEventKelompok({
 
             {status === "selesai" && bisaEdit && (
               <p className="mb-3 text-sm text-slate-500">
-                Perlu ujian susulan? Klik{" "}
+                Perlu ujian susulan atau perpanjangan tenggat? Klik{" "}
                 <strong className="font-semibold text-slate-600">
                   Buka ulang
                 </strong>{" "}
                 untuk mengubah tanggalnya, lalu perpanjang juga jadwal mapel
-                yang mau dibuka.
+                atau tenggat tugas di dalamnya.
               </p>
             )}
 
@@ -135,7 +136,7 @@ function KartuEvent({
   suffix: string;
   bisaBukaUlang: boolean;
 }) {
-  const kosong = event.jumlah_mapel === 0;
+  const def = definisiJenisEvent(event.jenis);
   const badge = BADGE_STATUS[status];
 
   /*
@@ -163,6 +164,16 @@ function KartuEvent({
         </span>
       </div>
 
+      <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <i className={`fas fa-${def.ikon}`} aria-hidden />
+        {def.label}
+        {!def.siap && (
+          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[0.6rem] font-bold normal-case text-amber-700">
+            Segera
+          </span>
+        )}
+      </p>
+
       <p className="flex items-center gap-1.5 text-sm text-slate-500">
         <i className="fas fa-calendar text-xs" aria-hidden />
         {formatTanggal(event.tgl_mulai)} –{" "}
@@ -173,31 +184,7 @@ function KartuEvent({
         <span className="rounded-full bg-teal/10 px-2.5 py-1 text-[0.68rem] font-semibold text-teal">
           Kelas {event.kelas_utama}
         </span>
-        {/*
-          Kegiatan tanpa mapel adalah kegiatan yang belum bisa
-          dipakai sama sekali. Versi lama menulisnya sebagai
-          "0 mapel" dengan warna abu redup — benar, tapi persis
-          sama tampilannya dengan kegiatan yang sudah siap.
-        */}
-        <span
-          className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold ${
-            kosong
-              ? "bg-red-50 text-red-600"
-              : "bg-slate-100 text-slate-600"
-          }`}
-        >
-          {kosong ? (
-            <>
-              <i
-                className="fas fa-triangle-exclamation mr-1"
-                aria-hidden
-              />
-              Belum ada mapel
-            </>
-          ) : (
-            `${event.jumlah_mapel} mapel`
-          )}
-        </span>
+        <LencanaIsi event={event} />
       </div>
 
       {bisaBukaUlang && (
@@ -212,5 +199,48 @@ function KartuEvent({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Lencana "isi" kartu, satu per mesin.
+ *
+ * KEGIATAN KOSONG ADALAH PERINGATAN, TAPI CUMA UNTUK MESIN YANG SUDAH
+ * SIAP. Event ujian tanpa mapel dan event tugas tanpa tugas sama-sama
+ * tidak bisa dipakai siswa — keduanya pantas ditandai merah. Event forum
+ * tanpa isi tidak: fiturnya memang belum dibangun, dan menuduhnya kosong
+ * berarti menyuruh guru memperbaiki sesuatu yang belum bisa diperbaiki
+ * siapa pun.
+ */
+function LencanaIsi({ event }: { event: EventAdmin }) {
+  const def = definisiJenisEvent(event.jenis);
+
+  if (!def.siap) {
+    return (
+      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.68rem] font-semibold text-slate-500">
+        Menyusul di Tahap {def.tahapRencana}
+      </span>
+    );
+  }
+
+  const jumlah = def.mesin === "tugas" ? event.jumlah_tugas : event.jumlah_mapel;
+  const satuan = def.mesin === "tugas" ? "tugas" : "mapel";
+  const kosong = jumlah === 0;
+
+  return (
+    <span
+      className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold ${
+        kosong ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-600"
+      }`}
+    >
+      {kosong ? (
+        <>
+          <i className="fas fa-triangle-exclamation mr-1" aria-hidden />
+          Belum ada {satuan}
+        </>
+      ) : (
+        `${jumlah} ${satuan}`
+      )}
+    </span>
   );
 }

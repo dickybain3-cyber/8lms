@@ -31,6 +31,10 @@ export interface SesiGuru {
   email: string | null;
   /** `guru.is_admin` — boleh lintas jenjang. */
   isAdmin: boolean;
+  /** `guru.username` (migrasi 0015). NULL untuk akun lama yang login pakai email. */
+  username: string | null;
+  /** `guru.foto_url` (migrasi 0016). NULL = tampilkan avatar bulat bawaan. */
+  fotoUrl: string | null;
 }
 
 export async function getSesiGuru(): Promise<SesiGuru> {
@@ -40,7 +44,7 @@ export async function getSesiGuru(): Promise<SesiGuru> {
   // (lihat server.ts). Di sini itu bukan kondisi luar biasa — middleware
   // akan melempar orangnya ke /login — jadi cukup kembalikan sesi kosong.
   if (!jenjang) {
-    return { jenjang: null, guruId: null, nama: null, email: null, isAdmin: false };
+    return sesiKosong(null);
   }
 
   const supabase = createClient();
@@ -49,16 +53,45 @@ export async function getSesiGuru(): Promise<SesiGuru> {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { jenjang, guruId: null, nama: null, email: null, isAdmin: false };
+    return sesiKosong(jenjang);
   }
 
   // RLS `guru_select_guru` mengizinkan guru membaca baris guru (termasuk
   // barisnya sendiri), jadi ini tidak perlu service_role.
-  const { data: guru } = await supabase
+  //
+  // Dua tahap, BUKAN satu select yang langsung memuat kolom baru:
+  // `foto_url` (migrasi 0016) belum tentu sudah ada di ketiga project.
+  // Kalau select-nya gagal karena satu kolom itu, hasilnya `guru = null`
+  // dan akun admin mendadak dianggap "bukan admin" — hanya karena sebuah
+  // foto profil. Jadi kalau select lengkap gagal, ulangi dengan kolom lama
+  // saja; foto dan username jadi kosong, sisanya persis seperti sebelum
+  // fitur profil ada.
+  type BarisGuru = {
+    id: string;
+    nama: string;
+    is_admin: boolean | null;
+    username?: string | null;
+    foto_url?: string | null;
+  };
+
+  let guru: BarisGuru | null = null;
+
+  const lengkap = await supabase
     .from("guru")
-    .select("id, nama, is_admin")
+    .select("id, nama, is_admin, username, foto_url")
     .eq("auth_id", user.id)
     .maybeSingle();
+
+  if (!lengkap.error) {
+    guru = lengkap.data as BarisGuru | null;
+  } else {
+    const lama = await supabase
+      .from("guru")
+      .select("id, nama, is_admin")
+      .eq("auth_id", user.id)
+      .maybeSingle();
+    guru = (lama.data as BarisGuru | null) ?? null;
+  }
 
   return {
     jenjang,
@@ -66,10 +99,24 @@ export async function getSesiGuru(): Promise<SesiGuru> {
     nama: guru?.nama ?? null,
     email: user.email ?? null,
     // `?? false` bukan cuma soal tipe: kalau migrasi 0011 belum dijalankan
-    // di project ini, kolomnya belum ada dan query di atas gagal (guru
-    // jadi null) — hasilnya "bukan admin", yang merupakan default yang
-    // aman. Halaman tetap jalan dalam mode satu jenjang.
+    // di project ini, kolomnya belum ada dan kedua query di atas gagal
+    // (guru jadi null) — hasilnya "bukan admin", yang merupakan default
+    // yang aman. Halaman tetap jalan dalam mode satu jenjang.
     isAdmin: guru?.is_admin ?? false,
+    username: guru?.username ?? null,
+    fotoUrl: guru?.foto_url ?? null,
+  };
+}
+
+function sesiKosong(jenjang: Jenjang | null): SesiGuru {
+  return {
+    jenjang,
+    guruId: null,
+    nama: null,
+    email: null,
+    isAdmin: false,
+    username: null,
+    fotoUrl: null,
   };
 }
 

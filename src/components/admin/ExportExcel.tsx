@@ -4,6 +4,10 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { unduhExcel, waktuExcel, type SheetExcel } from "@/lib/excel";
 import { SEKOLAH } from "@/lib/branding";
+import { JENJANG_LABEL, type Jenjang } from "@/lib/jenjang";
+import {
+  ambilDetailGuruSemuaJenjang,
+} from "@/app/admin/actions-export";
 
 /** Nama sekolah versi aman-nama-berkas (tanpa spasi/karakter aneh). */
 const SLUG_SEKOLAH = SEKOLAH.namaPendek.replace(/[^a-zA-Z0-9]+/g, "_");
@@ -151,56 +155,155 @@ export function ExportSiswaExcelButton() {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Akun guru
+// 2. Unduh detail guru (Tahap 2) — khusus is_admin, lintas 3 jenjang
 // ---------------------------------------------------------------------------
-interface BarisGuruExport {
-  guru_id: string;
-  nama: string;
-  email: string;
-  is_admin: boolean;
-  created_at: string;
+//
+// BEDA dari export akun lain di file ini: tidak memanggil RPC langsung dari
+// browser (anon key + sesi). Baris yang dibawa pulang (status password,
+// NIP) lebih sensitif daripada sekadar "nama + email", jadi pengambilan
+// datanya lewat Server Action `ambilDetailGuruSemuaJenjang()`
+// (src/app/admin/actions-export.ts) yang mengecek `is_admin` di SERVER
+// sebelum membaca apa pun lewat service_role. Tombol ini sendiri juga
+// hanya dirender kalau pemanggil halaman (`page.tsx`) sudah tahu
+// `sesi.isAdmin` — tapi itu cuma soal tampilan; penjaga yang sungguhan ada
+// di server action-nya, sesuai bagian 2 & 8 prompt Tahap 2.
+
+/** Sinkron dengan enum di migrasi 0017 (`guru.password_status`). */
+type StatusPasswordGuru =
+  | "awal"
+  | "direset_admin"
+  | "diganti_guru"
+  | "tidak_diketahui";
+
+const PASSWORD_AWAL_GURU_LABEL = "guru123456";
+
+function labelStatusPassword(status: StatusPasswordGuru | null): string {
+  switch (status) {
+    case "awal":
+      return "Awal (belum pernah diganti)";
+    case "direset_admin":
+      return "Direset admin";
+    case "diganti_guru":
+      return "Sudah diganti guru";
+    case "tidak_diketahui":
+      return "Tidak diketahui (akun lama, riwayat sebelum migrasi 0017 tidak tercatat)";
+    case null:
+      return "Tidak diketahui (migrasi 0017 belum dijalankan di jenjang ini)";
+  }
 }
 
-export function ExportGuruExcelButton() {
+/**
+ * Isi kolom "Password". HANYA menuliskan password awal yang sungguhan kalau
+ * statusnya memang `'awal'` — di semua kasus lain (termasuk null / migrasi
+ * belum jalan) ditulis keterangan, bukan menebak passwordnya. Aturan ini
+ * persis permintaan di bagian 6 prompt Tahap 2: jangan mengklaim `'awal'`
+ * untuk akun yang riwayatnya tidak diketahui.
+ */
+function isiKolomPassword(status: StatusPasswordGuru | null): string {
+  switch (status) {
+    case "awal":
+      return PASSWORD_AWAL_GURU_LABEL;
+    case "direset_admin":
+      return "Sudah diganti — password baru hanya tampil saat direset";
+    case "diganti_guru":
+      return "Sudah diganti guru (tidak bisa dibaca sistem)";
+    case "tidak_diketahui":
+    case null:
+      return "Tidak diketahui — reset untuk memastikan";
+  }
+}
+
+interface BarisGuruDetailExport {
+  guru_id: string;
+  nama: string;
+  nip: string | null;
+  username: string | null;
+  is_admin: boolean;
+  passwordStatus: StatusPasswordGuru | null;
+  passwordDigantiAt: string | null;
+  createdAt: string;
+  jenjang: Jenjang;
+}
+
+export function UnduhDetailGuruButton() {
   const [sibuk, setSibuk] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [peringatan, setPeringatan] = useState<string | null>(null);
 
   async function jalankan() {
     setSibuk(true);
     setError(null);
+    setPeringatan(null);
     try {
-      const supabase = createClient();
-      const { data, error: rpcError } = await supabase.rpc(
-        "get_daftar_guru_export"
-      );
-      if (rpcError) throw new Error(rpcError.message);
+      const { baris, jenjangGagal } = await ambilDetailGuruSemuaJenjang();
 
-      const baris = (data ?? []) as BarisGuruExport[];
       if (baris.length === 0) {
-        setError("Belum ada data guru.");
+        setError(
+          jenjangGagal.length > 0
+            ? `Tidak ada data yang berhasil ditarik. Gagal: ${jenjangGagal
+                .map((j) => `${JENJANG_LABEL[j.jenjang]} (${j.pesan})`)
+                .join("; ")}`
+            : "Belum ada data guru."
+        );
         return;
       }
+
+      if (jenjangGagal.length > 0) {
+        setPeringatan(
+          `File tetap dibuat, tapi data dari ${jenjangGagal
+            .map((j) => `${JENJANG_LABEL[j.jenjang]} (${j.pesan})`)
+            .join("; ")} tidak ikut — coba lagi untuk melengkapinya.`
+        );
+      }
+
+      const data: BarisGuruDetailExport[] = baris;
+      const jumlahTidakDiketahui = data.filter(
+        (g) => g.passwordStatus === "tidak_diketahui" || g.passwordStatus === null
+      ).length;
 
       await unduhExcel(`Data_Guru_${SLUG_SEKOLAH}`, [
         {
           nama: "Data Guru",
-          judul: "DAFTAR AKUN GURU",
-          subjudul: `${SEKOLAH.nama} · ${SEKOLAH.kota} · ${baris.length} akun`,
+          judul: "DETAIL AKUN GURU",
+          subjudul:
+            `${SEKOLAH.nama} · ${SEKOLAH.kota} · ${data.length} akun` +
+            (jumlahTidakDiketahui > 0
+              ? ` · ${jumlahTidakDiketahui} status password tidak diketahui`
+              : ""),
           kolom: [
             { header: "No", key: "no", lebar: 6, tengah: true },
-            { header: "Nama", key: "nama", lebar: 32 },
-            { header: "Email (untuk login)", key: "email", lebar: 32 },
-            { header: "Peran", key: "peran", lebar: 14, tengah: true },
-            { header: "Dibuat", key: "dibuat", lebar: 18, tengah: true },
+            { header: "Nama", key: "nama", lebar: 30 },
+            { header: "NIP", key: "nip", lebar: 20, tengah: true },
+            { header: "Username", key: "username", lebar: 20 },
+            { header: "Peran", key: "peran", lebar: 12, tengah: true },
+            { header: "Jenjang Terdaftar", key: "jenjangTerdaftar", lebar: 16, tengah: true },
+            { header: "Password", key: "password", lebar: 34 },
+            { header: "Status Password", key: "statusPassword", lebar: 40 },
+            { header: "Terdaftar", key: "terdaftar", lebar: 18, tengah: true },
+            { header: "Terakhir Ganti Password", key: "terakhirGanti", lebar: 20, tengah: true },
           ],
-          baris: baris.map((g, i) => ({
-            no: i + 1,
-            nama: g.nama,
-            email: g.email,
-            peran: g.is_admin ? "Admin" : "Guru",
-            dibuat: waktuExcel(g.created_at),
-          })),
-          sorotBaris: (r) => r.peran === "Admin",
+          baris: data
+            .sort(
+              (a, b) => a.nama.localeCompare(b.nama) || a.jenjang - b.jenjang
+            )
+            .map((g, i) => ({
+              no: i + 1,
+              nama: g.nama,
+              nip: g.nip ?? "",
+              username: g.username ?? "(pakai email lama)",
+              peran: g.is_admin ? "Admin" : "Guru",
+              jenjangTerdaftar: JENJANG_LABEL[g.jenjang],
+              password: isiKolomPassword(g.passwordStatus),
+              statusPassword: labelStatusPassword(g.passwordStatus),
+              terdaftar: waktuExcel(g.createdAt),
+              terakhirGanti: waktuExcel(g.passwordDigantiAt),
+            })),
+          // Baris yang statusnya tidak diketahui disorot — itulah yang perlu
+          // ditindaklanjuti admin (verifikasi manual / minta guru ganti
+          // password), bukan baris admin biasa.
+          sorotBaris: (r) =>
+            typeof r.statusPassword === "string" &&
+            r.statusPassword.startsWith("Tidak diketahui"),
         },
       ]);
     } catch (e) {
@@ -211,12 +314,17 @@ export function ExportGuruExcelButton() {
   }
 
   return (
-    <TombolDasar
-      onClick={() => void jalankan()}
-      sibuk={sibuk}
-      error={error}
-      label="Export Excel (semua guru)"
-    />
+    <span className="inline-flex flex-col items-start gap-1">
+      <TombolDasar
+        onClick={() => void jalankan()}
+        sibuk={sibuk}
+        error={error}
+        label="Unduh detail guru"
+      />
+      {peringatan && (
+        <span className="text-[0.7rem] text-amber-600">{peringatan}</span>
+      )}
+    </span>
   );
 }
 

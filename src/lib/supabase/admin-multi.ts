@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { JENJANG_LIST, type Jenjang } from "@/lib/jenjang";
+import type { StatusPasswordGuru } from "@/lib/guru-password-status";
 import type { Soal, TipeSoal } from "@/types";
 
 /**
@@ -249,6 +250,125 @@ export async function daftarGuruSemuaJenjang(): Promise<
     if (error) throw new Error(error.message);
     return (data ?? []) as BarisGuruExport[];
   });
+}
+
+// ---------------------------------------------------------------------------
+// Detail guru untuk unduhan (Tahap 2) — SENGAJA TIDAK memakai
+// get_daftar_guru_export() (0012, dipanggil daftarGuruSemuaJenjang() di
+// atas): RPC itu identitasnya berbasis EMAIL (peninggalan sebelum migrasi
+// 0015) dan tidak membawa nip/username/status password sama sekali. Karena
+// fungsi ini sudah jalan lewat service_role (RLS memang dilewati di sini),
+// membuat RPC baru cuma untuk query yang sama persis tidak menambah apa-apa
+// — langsung `select` ke tabel `guru` sudah cukup dan lebih mudah dirawat.
+// ---------------------------------------------------------------------------
+
+export interface BarisGuruDetailExport {
+  guru_id: string;
+  nama: string;
+  nip: string | null;
+  username: string | null;
+  is_admin: boolean;
+  /** null = migrasi 0017 belum jalan di project ini, BUKAN "tidak_diketahui"
+   *  yang sudah pasti nilainya (beda arti: yang satu kolomnya belum ada,
+   *  yang lain kolomnya ada tapi riwayatnya memang tak tercatat). Pemanggil
+   *  yang membedakan keduanya di teks yang ditampilkan. */
+  passwordStatus: StatusPasswordGuru | null;
+  passwordDigantiAt: string | null;
+  createdAt: string;
+}
+
+interface BarisGuruMentahLengkap {
+  id: string;
+  nama: string;
+  nip: string | null;
+  username: string | null;
+  is_admin: boolean;
+  password_status: StatusPasswordGuru;
+  password_diganti_at: string | null;
+  created_at: string;
+}
+
+type BarisGuruMentahLama = Omit<BarisGuruMentahLengkap, "password_status">;
+
+/**
+ * Bentuk minimal client Supabase yang dibutuhkan fungsi di bawah — BUKAN
+ * `ReturnType<typeof createAdminClient>` penuh, supaya bisa diuji dengan
+ * client palsu (`tsx` + `node:assert`, lihat
+ * `src/lib/__tests__/guru-detail-export.test.ts`) tanpa memasang seluruh
+ * `@supabase/supabase-js`.
+ */
+export interface KlienGuruMentah {
+  from(tabel: "guru"): {
+    select(kolom: string): {
+      order(
+        kolom: string,
+        opsi: { ascending: boolean }
+      ): PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
+    };
+  };
+}
+
+/**
+ * Detail SATU project untuk unduhan detail guru. Dua tahap select, pola
+ * yang sama dengan `getSesiGuru()` di admin-guard.ts: kolom
+ * `password_status` (migrasi 0017) belum tentu ada di ketiga project pada
+ * saat yang sama. Kalau select lengkap gagal, ulangi tanpa kolom itu —
+ * supaya unduhan tetap jalan untuk project yang migrasinya belum
+ * dijalankan, dengan status kolom itu ditandai `null` (bukan dianggap
+ * error, dan bukan pula ditebak sebagai salah satu status yang valid).
+ *
+ * Diekspor terpisah dari `daftarGuruDetailSemuaJenjang()` (yang mengikat
+ * ke `createAdminClient` sungguhan lewat `untukSemuaJenjang`) supaya
+ * logika fallback-nya sendiri bisa diuji dengan client palsu.
+ */
+export async function ambilDetailGuruSatuProject(
+  client: KlienGuruMentah
+): Promise<BarisGuruDetailExport[]> {
+  const kolomLengkap =
+    "id, nama, nip, username, is_admin, password_status, password_diganti_at, created_at";
+  const kolomLama =
+    "id, nama, nip, username, is_admin, password_diganti_at, created_at";
+
+  const lengkap = await client
+    .from("guru")
+    .select(kolomLengkap)
+    .order("nama", { ascending: true });
+
+  let baris: (BarisGuruMentahLengkap | BarisGuruMentahLama)[];
+  let migrasi0017BelumJalan = false;
+
+  if (lengkap.error) {
+    const lama = await client
+      .from("guru")
+      .select(kolomLama)
+      .order("nama", { ascending: true });
+    if (lama.error) throw new Error(lama.error.message);
+    baris = (lama.data ?? []) as BarisGuruMentahLama[];
+    migrasi0017BelumJalan = true;
+  } else {
+    baris = (lengkap.data ?? []) as BarisGuruMentahLengkap[];
+  }
+
+  return baris.map((g) => ({
+    guru_id: g.id,
+    nama: g.nama,
+    nip: g.nip,
+    username: g.username,
+    is_admin: g.is_admin,
+    passwordStatus: migrasi0017BelumJalan
+      ? null
+      : (g as BarisGuruMentahLengkap).password_status,
+    passwordDigantiAt: g.password_diganti_at,
+    createdAt: g.created_at,
+  }));
+}
+
+export async function daftarGuruDetailSemuaJenjang(): Promise<
+  HasilJenjang<BarisGuruDetailExport>[]
+> {
+  return untukSemuaJenjang<BarisGuruDetailExport>((client) =>
+    ambilDetailGuruSatuProject(client)
+  );
 }
 
 // ---------------------------------------------------------------------------

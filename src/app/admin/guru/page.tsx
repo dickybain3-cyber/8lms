@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getSesiGuru } from "@/lib/admin-guard";
 import ImportGuruForm from "./ImportGuruForm";
 import TambahGuruManualForm from "./TambahGuruManualForm";
 import AkunAksiButtons from "@/components/admin/AkunAksiButtons";
@@ -9,6 +10,7 @@ import {
 } from "./actions";
 import { cursorKeysetOr } from "@/lib/postgrest-filter";
 import ExportAkunCsvButton from "@/components/admin/ExportAkunCsvButton";
+import { UnduhDetailGuruButton } from "@/components/admin/ExportExcel";
 
 const BATAS_BARIS = 200;
 
@@ -41,6 +43,11 @@ export default async function GuruPage({
   };
 }) {
   const supabase = createClient();
+  // Tombol "Unduh detail guru" (Tahap 2) khusus is_admin — kolomnya berisi
+  // status password, jadi disembunyikan untuk guru biasa. Ini cuma soal
+  // TAMPILAN; penjaga sungguhan ada di server action `ambilDetailGuruSemuaJenjang()`
+  // (src/app/admin/actions-export.ts), bukan di sini.
+  const sesi = await getSesiGuru();
 
   const { count: totalGuru } = await supabase
     .from("guru")
@@ -59,7 +66,7 @@ export default async function GuruPage({
     // sengaja longgar karena admin di lapangan kadang mengetik NIP,
     // kadang nama, jarang keduanya sekaligus untuk siswa/guru yang sama.
     daftarQuery = daftarQuery.or(
-      `nama.ilike.%${cari}%,username.ilike.%${cari}%`
+      `nama.ilike.%${cari}%,username.ilike.%${cari}%,nip.ilike.%${cari}%`
     );
   }
 
@@ -91,8 +98,10 @@ export default async function GuruPage({
           <h1 className="font-serif text-2xl text-ink">Akun Guru</h1>
           <p className="mt-1 text-sm text-ink/60">
             {totalGuru ?? 0} akun guru sudah terdaftar. Login memakai{" "}
-            <b>NIP</b> sebagai username — password awal untuk akun baru
-            selalu <code className="rounded bg-ink/5 px-1">guru123456</code>.
+            <b>username</b> — awalnya sama dengan NIP, dan guru bisa
+            menggantinya sendiri di menu Profil Saya. Password awal untuk
+            akun baru selalu{" "}
+            <code className="rounded bg-ink/5 px-1">guru123456</code>.
           </p>
         </div>
       </div>
@@ -110,16 +119,19 @@ export default async function GuruPage({
               Cari nama atau NIP untuk memeriksa akun yang sudah ada.
             </p>
           </div>
-          <ExportAkunCsvButton
-            headers={["Nama", "NIP", "Username", "Terdaftar"]}
-            rows={guruList.map((g) => [
-              g.nama,
-              g.nip ?? "",
-              g.username ?? "",
-              formatTanggal(g.created_at),
-            ])}
-            filename="akun-guru.csv"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportAkunCsvButton
+              headers={["Nama", "NIP", "Username", "Terdaftar"]}
+              rows={guruList.map((g) => [
+                g.nama,
+                g.nip ?? "",
+                g.username ?? "",
+                formatTanggal(g.created_at),
+              ])}
+              filename="akun-guru.csv"
+            />
+            {sesi.isAdmin && <UnduhDetailGuruButton />}
+          </div>
         </div>
 
         <form

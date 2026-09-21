@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import type { EventAdmin } from "@/lib/supabase/admin-multi-event";
+import {
+  ambilDaftarEventMentah,
+  type EventAdmin,
+} from "@/lib/supabase/admin-multi-event";
 
 /**
  * Daftar event untuk jenjang SESI yang sedang login (cookie-bound, kena
@@ -15,24 +18,10 @@ export async function muatEventSesi(): Promise<{
   error: string | null;
 }> {
   const supabase = createClient();
-  const { data: events, error } = await supabase
-    .from("event")
-    .select("id, nama, tgl_mulai, tgl_selesai, kelas_utama, mapel(count)")
-    .order("tgl_mulai", { ascending: false });
-
-  const daftar: EventAdmin[] = (events ?? []).map((event) => ({
-    id: event.id,
-    nama: event.nama,
-    tgl_mulai: event.tgl_mulai,
-    tgl_selesai: event.tgl_selesai,
-    kelas_utama: Number(event.kelas_utama),
-    jumlah_mapel: Array.isArray(event.mapel)
-      ? ((event.mapel[0] as { count: number } | undefined)?.count ?? 0)
-      : 0,
-  }));
-
-  return {
-    daftar,
-    error: error ? "Gagal memuat daftar event." : null,
-  };
+  try {
+    const daftar = await ambilDaftarEventMentah(supabase);
+    return { daftar, error: null };
+  } catch {
+    return { daftar: [], error: "Gagal memuat daftar event." };
+  }
 }

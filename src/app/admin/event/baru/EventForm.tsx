@@ -2,6 +2,7 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { createEvent, type ActionState } from "../actions";
+import { DAFTAR_JENIS_EVENT } from "@/lib/jenis-event";
 
 const initialState: ActionState = { error: null };
 
@@ -23,6 +24,39 @@ export default function EventForm() {
 
   return (
     <form action={formAction} className="max-w-lg space-y-5">
+      <fieldset>
+        <legend className="mb-1.5 block text-sm text-ink/70">
+          Jenis kegiatan
+        </legend>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {DAFTAR_JENIS_EVENT.map((j, i) => (
+            <label
+              key={j.value}
+              className="flex cursor-pointer flex-col gap-1 rounded-md border border-ink/15 bg-white p-3.5 has-[:checked]:border-gold has-[:checked]:bg-gold/10"
+            >
+              <span className="flex items-center gap-2 text-sm font-medium text-ink">
+                <input
+                  type="radio"
+                  name="jenis"
+                  value={j.value}
+                  required
+                  defaultChecked={i === 0}
+                  className="accent-gold"
+                />
+                <i className={`fas fa-${j.ikon} text-ink/40`} aria-hidden />
+                {j.label}
+                {!j.pakaiMesinUjian && (
+                  <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700">
+                    Segera
+                  </span>
+                )}
+              </span>
+              <span className="pl-6 text-xs text-ink/50">{j.deskripsi}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
       <div>
         <label htmlFor="nama" className="mb-1.5 block text-sm text-ink/70">
           Nama event

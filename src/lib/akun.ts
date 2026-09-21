@@ -135,3 +135,107 @@ export function passwordDariTanggalISO(iso: string): string | null {
 export function nipValid(nip: string): boolean {
   return /^\d{8,25}$/.test(String(nip ?? "").trim());
 }
+
+// ---------------------------------------------------------------------------
+// Aturan profil guru (halaman /admin/profil)
+// ---------------------------------------------------------------------------
+// Ditaruh di sini, bukan di Server Action-nya, supaya form di browser dan
+// server memakai aturan yang sama persis — satu-satunya cara mencegah kasus
+// "form bilang boleh, server menolak" yang muncul begitu dua tempat menulis
+// aturannya sendiri-sendiri.
+
+export const USERNAME_MIN = 4;
+export const USERNAME_MAKS = 30;
+export const PASSWORD_MIN = 8;
+/** bcrypt (yang dipakai Supabase Auth) hanya membaca 72 byte pertama. */
+export const PASSWORD_MAKS = 72;
+
+export type HasilValidasi<T> =
+  | { ok: true; nilai: T }
+  | { ok: false; pesan: string };
+
+/**
+ * Validasi username baru yang diketik guru.
+ *
+ * SENGAJA menolak karakter terlarang, bukan diam-diam membuangnya seperti
+ * `normalkanUsername`: kalau guru mengetik "budi@sekolah", hasil pembuangan
+ * diam-diam adalah "budisekolah" — username yang tidak pernah dia maksud dan
+ * baru ketahuan saat login gagal. Yang dinormalkan diam-diam hanya hal yang
+ * tidak mengubah maksud: spasi di ujung dan huruf besar.
+ *
+ * Angka murni diizinkan (memang begitulah username awal guru: NIP).
+ */
+export function validasiUsernameGuru(raw: string): HasilValidasi<string> {
+  const username = String(raw ?? "").trim().toLowerCase();
+
+  if (!username) return { ok: false, pesan: "Username tidak boleh kosong." };
+  if (username.length < USERNAME_MIN) {
+    return {
+      ok: false,
+      pesan: `Username minimal ${USERNAME_MIN} karakter.`,
+    };
+  }
+  if (username.length > USERNAME_MAKS) {
+    return {
+      ok: false,
+      pesan: `Username maksimal ${USERNAME_MAKS} karakter.`,
+    };
+  }
+  if (!/^[a-z0-9._-]+$/.test(username)) {
+    return {
+      ok: false,
+      pesan:
+        "Username hanya boleh berisi huruf, angka, titik, garis bawah, dan strip — tanpa spasi atau simbol lain.",
+    };
+  }
+  if (!/^[a-z0-9]/.test(username) || !/[a-z0-9]$/.test(username)) {
+    return {
+      ok: false,
+      pesan: "Username harus diawali dan diakhiri huruf atau angka.",
+    };
+  }
+  return { ok: true, nilai: username };
+}
+
+/**
+ * Validasi kata sandi baru. Sengaja tidak menuntut huruf besar + simbol +
+ * angka sekaligus: aturan seperti itu di lapangan berakhir dengan kata sandi
+ * yang ditulis di kertas. Yang dijaga hanya hal yang benar-benar melemahkan:
+ * terlalu pendek, sama dengan kata sandi awal yang diketahui semua orang,
+ * atau sama dengan username/NIP yang tercetak di banyak dokumen.
+ */
+export function validasiPasswordGuru(
+  password: string,
+  konteks: { username?: string | null; nip?: string | null }
+): HasilValidasi<string> {
+  if (password.length < PASSWORD_MIN) {
+    return {
+      ok: false,
+      pesan: `Password baru minimal ${PASSWORD_MIN} karakter.`,
+    };
+  }
+  if (password.length > PASSWORD_MAKS) {
+    return {
+      ok: false,
+      pesan: `Password baru maksimal ${PASSWORD_MAKS} karakter.`,
+    };
+  }
+  if (password === PASSWORD_AWAL_GURU) {
+    return {
+      ok: false,
+      pesan:
+        "Password baru tidak boleh sama dengan password awal yang diberikan admin.",
+    };
+  }
+  const lower = password.toLowerCase();
+  if (
+    (konteks.username && lower === konteks.username.toLowerCase()) ||
+    (konteks.nip && lower === konteks.nip.toLowerCase())
+  ) {
+    return {
+      ok: false,
+      pesan: "Password baru tidak boleh sama dengan username atau NIP kamu.",
+    };
+  }
+  return { ok: true, nilai: password };
+}
