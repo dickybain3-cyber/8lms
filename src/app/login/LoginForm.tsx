@@ -33,7 +33,7 @@ const SISWA_EMAIL_SUFFIX =
  *      harus menanyakan daftar nama ke server yang mana.
  *   2. Kelas (7.1-7.6 / 8.1-8.6 / 9.1-9.6) -> menyaring daftar nama.
  *   3. Pilih Nama lewat modal (bukan mengetik username).
- *   4. Tanggal lahir sebagai pengganti kata sandi.
+ *   4. Tanggal hari ini sebagai pengganti kata sandi.
  *
  * Beda dari versi sebelumnya: dulu jenjang 8 dan 9 TIDAK dipecah per
  * sub-kelas (satu pilihan "Kelas 8" saja, daftar namanya digabung satu
@@ -41,10 +41,11 @@ const SISWA_EMAIL_SUFFIX =
  * bertingkat — jadi daftar nama yang harus di-scroll siswa selalu
  * sepanjang satu kelas saja, bukan ±200 nama satu jenjang.
  *
- * Tanggal lahir dipakai LANGSUNG sebagai password akun Supabase Auth
- * dengan format digit "DDMMYYYY" (lahir 14 Mei 2012 -> "14052012"),
- * diset saat akun dibuat. TIDAK ADA kolom tanggal_lahir di database
- * mana pun, jadi tidak perlu migrasi skema untuk alur ini.
+ * Tanggal dipakai LANGSUNG sebagai password akun Supabase Auth dengan
+ * format digit "DDMMYYYY" (24 September 2026 -> "24092026"). Petunjuk
+ * di form dan pesan error otomatis mengikuti tanggal hari ini (WIB).
+ * CATATAN: password akun di Supabase Auth harus ikut diganti ke tanggal
+ * hari ini (job harian / edge function), kalau tidak login akan gagal.
  *
  * Kalau nanti mau balik ke username+password biasa untuk siswa: ganti
  * isi blok `tab === "siswa"` di bawah dengan input identifier+password
@@ -92,6 +93,27 @@ function tanggalLahirKePassword(
   tahun: string
 ): string {
   return `${tanggal.padStart(2, "0")}${bulan}${tahun}`;
+}
+
+/**
+ * Tanggal hari ini menurut WIB (bukan jam perangkat/UTC), dalam format
+ * Indonesia, mis. "24 September 2026". Dihitung setiap dipanggil, jadi
+ * selalu mengikuti hari ini tanpa perlu diedit manual.
+ */
+function tanggalHariIniLabel(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const ambil = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const tanggal = Number(ambil("day"));
+  const bulan = BULAN_LIST[Number(ambil("month")) - 1]?.label ?? "";
+  const tahun = ambil("year");
+
+  return `${tanggal} ${bulan} ${tahun}`;
 }
 
 export default function LoginForm() {
@@ -363,21 +385,27 @@ export default function LoginForm() {
       return;
     }
     if (!tglTanggal || !tglBulan || !tglTahun) {
-      setError("Masukkan tanggal lahir kamu lengkap (tanggal, bulan, tahun).");
+      setError(
+        `Masukkan tanggal hari ini (${tanggalHariIniLabel()}) dengan lengkap: tanggal, bulan, dan tahun.`
+      );
       return;
     }
     const tanggalAngka = Number(tglTanggal);
     if (!Number.isInteger(tanggalAngka) || tanggalAngka < 1 || tanggalAngka > 31) {
-      setError("Tanggal lahir tidak valid — isi angka 1 sampai 31.");
+      setError(
+        `Tanggal tidak valid — isi angka 1 sampai 31. Masukkan tanggal hari ini (${tanggalHariIniLabel()}).`
+      );
       return;
     }
     if (!/^\d{4}$/.test(tglTahun)) {
-      setError("Tahun lahir harus 4 digit, contoh: 2012.");
+      setError(
+        `Tahun harus 4 digit. Masukkan tanggal hari ini (${tanggalHariIniLabel()}).`
+      );
       return;
     }
 
     setLoading(true);
-    setTahap("Memeriksa tanggal lahir…");
+    setTahap("Memeriksa tanggal…");
     setJenjangCookie(jenjangSiswa);
     const supabase = createClient(jenjangSiswa);
 
@@ -390,7 +418,8 @@ export default function LoginForm() {
       setLoading(false);
       setTahap("");
       setError(
-        "Tanggal lahir tidak sesuai — atau kelas/nama yang dipilih salah. Coba periksa lagi, atau hubungi guru/admin."
+        `Tanggal yang kamu masukkan tidak sesuai. Masukkan tanggal hari ini (${tanggalHariIniLabel()}). ` +
+          "Kalau sudah benar, periksa kelas dan nama yang dipilih, atau hubungi guru/admin."
       );
       return;
     }
@@ -529,7 +558,7 @@ export default function LoginForm() {
                   min={1}
                   max={31}
                   placeholder="Tgl"
-                  aria-label="Tanggal lahir"
+                  aria-label="Tanggal hari ini"
                   value={tglTanggal}
                   onChange={(e) => setTglTanggal(e.target.value)}
                   className="field text-center"
@@ -537,7 +566,7 @@ export default function LoginForm() {
                 <select
                   id="tglBulan"
                   required
-                  aria-label="Bulan lahir"
+                  aria-label="Bulan hari ini"
                   value={tglBulan}
                   onChange={(e) => setTglBulan(e.target.value)}
                   className="field cursor-pointer"
@@ -555,14 +584,14 @@ export default function LoginForm() {
                   inputMode="numeric"
                   required
                   placeholder="Tahun"
-                  aria-label="Tahun lahir"
+                  aria-label="Tahun hari ini"
                   value={tglTahun}
                   onChange={(e) => setTglTahun(e.target.value)}
                   className="field text-center"
                 />
               </div>
               <p className="mt-1.5 text-[0.72rem] text-slate-500">
-                Masukkan tanggal hari ini (19 September 2026)
+                Masukkan tanggal hari ini ({tanggalHariIniLabel()})
               </p>
             </div>
           )}
