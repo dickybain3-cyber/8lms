@@ -16,6 +16,14 @@ import {
   jitterSubmitMs,
 } from "@/lib/autosave-lokal";
 import {
+  AMBANG_MENINGGALKAN_MS,
+  BATAS_PERINGATAN,
+  KODE_BUKA_KUNCI,
+  bacaPelanggaranLokal,
+  simpanPelanggaranLokal,
+  hapusPelanggaranLokal,
+} from "@/lib/pengawasan-ujian";
+import {
   unduhPaketSoal,
   bacaPaketSoal,
   hapusPaketSoal,
@@ -133,6 +141,22 @@ export default function ExamClient({
   >(null);
   const [submitting, setSubmitting] = useState(false);
   const [waktuHabis, setWaktuHabis] = useState(false);
+
+  // -------------------------------------------------------------------------
+  // Pengawasan — pelanggaran keluar halaman (baru)
+  // -------------------------------------------------------------------------
+  // `jumlahPelanggaran`/`terkunci` state React biasa, tapi SUMBER
+  // KEBENARANNYA localStorage (lihat `pengawasan-ujian.ts`) — dibaca
+  // sekali di efek mount di bawah, supaya refresh halaman tidak
+  // mereset hitungan atau membuka kunci begitu saja.
+  const [jumlahPelanggaran, setJumlahPelanggaran] = useState(0);
+  const [terkunci, setTerkunci] = useState(false);
+  /** Pelanggaran yang BARU SAJA tercatat, untuk modal peringatan
+   *  sekali-tampil (1 dan 2). `null` = tidak ada modal peringatan yang
+   *  perlu ditampilkan saat ini. Terpisah dari `terkunci` karena gerbang
+   *  kode (pelanggaran ke-3 dst) adalah modal yang BEDA — tidak bisa
+   *  ditutup cuma dengan OK. */
+  const [peringatanBaru, setPeringatanBaru] = useState<number | null>(null);
 
   // --- Waktu (baru) ---
   const [deadlineMs, setDeadlineMs] = useState<number | null>(null);
@@ -433,6 +457,121 @@ export default function ExamClient({
   }, [readOnly, simpanSekarang]);
 
   // -------------------------------------------------------------------------
+  // Pengawasan — baca catatan pelanggaran yang sudah ada (baru)
+  // -------------------------------------------------------------------------
+  // Sekali saat mount, sebelum efek deteksi di bawah mulai berjalan —
+  // supaya siswa yang me-refresh setelah dikunci TETAP terkunci begitu
+  // halaman terbuka kembali, bukan menunggu pelanggaran baru dulu.
+  useEffect(() => {
+    if (readOnly) return;
+    const awal = bacaPelanggaranLokal(siswaId, mapel.id);
+    setJumlahPelanggaran(awal.jumlah);
+    setTerkunci(awal.terkunci);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readOnly]);
+
+  /**
+   * Satu pelanggaran tercatat: naikkan hitungan, simpan ke localStorage
+   * (SUMBER KEBENARAN, lihat `pengawasan-ujian.ts`), dan tentukan modal
+   * mana yang tampil — peringatan biasa (masih di bawah
+   * `BATAS_PERINGATAN`) atau gerbang kode (sudah mencapai/melewati).
+   *
+   * Sengaja pakai functional update (`(n) => ...`) supaya tidak
+   * bergantung pada `jumlahPelanggaran` dari closure efek yang mungkin
+   * sudah basi kalau beberapa pelanggaran terjadi berdekatan.
+   */
+  const catatPelanggaran = useCallback(() => {
+    setJumlahPelanggaran((n) => {
+      const next = n + 1;
+      const kunci = next >= BATAS_PERINGATAN;
+      simpanPelanggaranLokal(siswaId, mapel.id, { jumlah: next, terkunci: kunci });
+      if (kunci) {
+        setTerkunci(true);
+      } else {
+        setPeringatanBaru(next);
+      }
+      return next;
+    });
+  }, [siswaId, mapel.id]);
+
+  // -------------------------------------------------------------------------
+  // Pengawasan — deteksi keluar halaman (baru)
+  // -------------------------------------------------------------------------
+  // Dipisah dari efek autosave di atas dengan sengaja — autosave harus
+  // bereaksi SEKETIKA halaman tersembunyi (menyimpan sebelum tab benar-
+  // benar hilang), sedangkan pelanggaran baru boleh dihitung setelah
+  // bertahan `AMBANG_MENINGGALKAN_MS`. Menyatukan keduanya berarti
+  // autosave harus menunggu 10 detik juga, atau pelanggaran harus
+  // dihitung instan — dua-duanya salah.
+  //
+  // `visibilitychange` DAN `blur`/`focus` dipasang bersama, bukan salah
+  // satu saja: `visibilitychange` andal untuk pindah tab/minimize, tapi
+  // di Chrome desktop TIDAK terpicu kalau siswa alt-tab ke aplikasi lain
+  // selagi jendela tetap "terbuka" di layar (tidak diminimize) — cuma
+  // `blur` yang menangkap kasus itu. Dobel penanganan (mis. pindah tab
+  // memicu blur DAN visibilitychange sekaligus) aman karena
+  // `mulaiAway`/`selesaiAway` idempoten (lihat pengaman `sedangAway`).
+  useEffect(() => {
+    if (readOnly || terkunci) return;
+
+    let sedangAway = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    function mulaiAway() {
+      if (sedangAway) return; // sudah dihitung, blur+hidden tidak dobel
+      sedangAway = true;
+      timer = setTimeout(() => {
+        catatPelanggaran();
+        sedangAway = false;
+        timer = null;
+      }, AMBANG_MENINGGALKAN_MS);
+    }
+
+    function selesaiAway() {
+      // Kembali sebelum ambang tercapai — TIDAK dihitung. Ini persis
+      // jalur yang menutupi klik-silang notifikasi: jendela sempat
+      // blur sesaat lalu fokus lagi jauh di bawah 10 detik.
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      sedangAway = false;
+    }
+
+    function onVisibility() {
+      if (document.visibilityState === "hidden") mulaiAway();
+      else selesaiAway();
+    }
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", mulaiAway);
+    window.addEventListener("focus", selesaiAway);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", mulaiAway);
+      window.removeEventListener("focus", selesaiAway);
+      if (timer) clearTimeout(timer);
+    };
+  }, [readOnly, terkunci, catatPelanggaran]);
+
+  /** Dipanggil dari gerbang kode. `null` = kode salah (tetap terkunci,
+   *  modalnya sendiri yang menampilkan pesan galat). */
+  function cobaBukaKunci(kode: string): boolean {
+    if (kode.trim() !== KODE_BUKA_KUNCI) return false;
+    setTerkunci(false);
+    // `jumlah` TETAP disimpan apa adanya (riwayat), cuma `terkunci` yang
+    // berubah — supaya pelanggaran berikutnya langsung mengunci lagi
+    // tanpa "reset" ke 0, sesuai maksud "setelah peringatan ketiga harus
+    // masukkan kode": ini bukan jatah sekali pakai yang habis.
+    simpanPelanggaranLokal(siswaId, mapel.id, {
+      jumlah: jumlahPelanggaran,
+      terkunci: false,
+    });
+    return true;
+  }
+
+  // -------------------------------------------------------------------------
   // Detak monitoring (baru)
   // -------------------------------------------------------------------------
   // Dipisah dari autosave jawaban dengan sengaja: seorang siswa bisa saja 10
@@ -498,6 +637,9 @@ export default function ExamClient({
       // sesudah ujiannya selesai — di mana ia bisa dibaca ulang dan
       // dibagikan ke kelas yang ujiannya belum mulai.
       hapusPaketSoal(siswaId, mapel.id);
+      // Catatan pelanggaran ikut dibuang untuk alasan yang sama —
+      // ujian ini sudah selesai, tidak ada lagi yang perlu diawasi.
+      hapusPelanggaranLokal(siswaId, mapel.id);
       setSubmittedAt(now);
 
       // Setelah terkumpul, siswa SELALU dikembalikan ke dashboard — baik
@@ -536,6 +678,13 @@ export default function ExamClient({
       if (rem <= 0 && !autoSubmittedRef.current) {
         autoSubmittedRef.current = true;
         setWaktuHabis(true); // kunci input INSTAN, sebelum jitter/network
+        // Waktu habis MENGALAHKAN gerbang kode pelanggaran — auto-submit
+        // tidak boleh tersandung siswa yang kebetulan sedang terkunci
+        // saat detik terakhir berbunyi. Baris ini tidak menghapus catatan
+        // pelanggarannya (masih tersimpan di localStorage), cuma
+        // menyembunyikan modalnya supaya UI "waktu habis, mengumpulkan…"
+        // yang tampil, bukan gerbang kode yang sudah tidak relevan lagi.
+        setTerkunci(false);
         void kumpulkan(true);
         return true;
       }
@@ -716,6 +865,15 @@ export default function ExamClient({
           </div>
 
           <div className="flex items-center gap-3">
+            {!readOnly && jumlahPelanggaran > 0 && (
+              <span
+                title="Kamu terpantau meninggalkan halaman ujian selama 10 detik atau lebih"
+                className="rounded-full bg-danger/10 px-2.5 py-1 text-xs font-bold text-danger"
+              >
+                <i className="fas fa-triangle-exclamation mr-1" aria-hidden />
+                {jumlahPelanggaran}/{BATAS_PERINGATAN}
+              </span>
+            )}
             {!readOnly && (
               <SaveIndicator status={saveStatus} errorMsg={saveErrorMsg} />
             )}
@@ -920,6 +1078,17 @@ export default function ExamClient({
     onKumpulkan={() => setTahapKumpul("peringatan")}   // ← berubah
     onKirim={() => void konfirmasiSubmit()}            // ← baru
   />
+)}
+
+{peringatanBaru !== null && !terkunci && (
+  <ModalPeringatanKeluar
+    nomor={peringatanBaru}
+    onTutup={() => setPeringatanBaru(null)}
+  />
+)}
+
+{terkunci && !waktuHabis && (
+  <GerbangKodePelanggaran onCoba={cobaBukaKunci} />
 )}
     </div>
   );
@@ -1170,6 +1339,140 @@ function DialogPengumpulan({
   </div>
 )}
 
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Peringatan pelanggaran #1 dan #2 — sekadar informasi, tombolnya cuma
+ * "Mengerti" (bukan pilihan), karena tidak ada keputusan yang perlu
+ * diambil siswa di sini selain melanjutkan ujian dengan lebih hati-hati.
+ */
+function ModalPeringatanKeluar({
+  nomor,
+  onTutup,
+}: {
+  nomor: number;
+  onTutup: () => void;
+}) {
+  const sisa = BATAS_PERINGATAN - nomor;
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-ink/50 p-4">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="judul-peringatan-keluar"
+        className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+      >
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gold/15">
+          <i className="fas fa-triangle-exclamation text-xl text-gold-dark" aria-hidden />
+        </div>
+        <h2
+          id="judul-peringatan-keluar"
+          className="mb-2 font-serif text-lg font-bold text-ink"
+        >
+          Peringatan {nomor} dari {BATAS_PERINGATAN}
+        </h2>
+        <p className="mb-5 text-sm leading-relaxed text-ink/70">
+          Kamu terpantau meninggalkan halaman ujian ini (pindah tab, pindah
+          aplikasi, atau meminimalkan jendela) selama 10 detik atau lebih.
+          {sisa > 0 ? (
+            <>
+              {" "}
+              Kalau ini terjadi {sisa} kali lagi, ujian akan dikunci dan kamu
+              harus meminta kode dari pengawas untuk melanjutkan.
+            </>
+          ) : (
+            " Ini peringatan terakhir sebelum ujian dikunci."
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={onTutup}
+          autoFocus
+          className="h-12 w-full rounded-xl bg-ink text-sm font-bold text-paper transition-colors active:bg-ink-light touch-manipulation"
+        >
+          Mengerti, lanjutkan ujian
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Gerbang kode setelah `BATAS_PERINGATAN` pelanggaran — SENGAJA tidak
+ * punya tombol batal/tutup selain memasukkan kode yang benar (lihat
+ * juga baris render-nya di `ExamClient`: disembunyikan otomatis begitu
+ * waktu ujian habis, supaya siswa tidak terjebak selamanya kalau
+ * pengawas tidak sempat memberi kode sebelum ujian berakhir).
+ */
+function GerbangKodePelanggaran({
+  onCoba,
+}: {
+  onCoba: (kode: string) => boolean;
+}) {
+  const [kode, setKode] = useState("");
+  const [salah, setSalah] = useState(false);
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const ok = onCoba(kode);
+    if (!ok) {
+      setSalah(true);
+      setKode("");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink/70 p-4">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="judul-gerbang-kode"
+        className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+      >
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-danger/10">
+          <i className="fas fa-lock text-xl text-danger" aria-hidden />
+        </div>
+        <h2 id="judul-gerbang-kode" className="mb-2 font-serif text-lg font-bold text-ink">
+          Ujian dikunci
+        </h2>
+        <p className="mb-4 text-sm leading-relaxed text-ink/70">
+          Kamu sudah {BATAS_PERINGATAN} kali terpantau meninggalkan halaman
+          ujian. Untuk melanjutkan, minta kode dari pengawas ruangan dan
+          masukkan di bawah ini.
+        </p>
+        <form onSubmit={submit}>
+          <input
+            type="text"
+            inputMode="text"
+            autoFocus
+            value={kode}
+            onChange={(e) => {
+              setKode(e.target.value);
+              setSalah(false);
+            }}
+            placeholder="Kode dari pengawas"
+            className={`mb-1 h-12 w-full rounded-xl border px-3.5 text-center text-sm tracking-wide outline-none ${
+              salah ? "border-danger" : "border-ink/15 focus:border-gold"
+            }`}
+          />
+          {salah && (
+            <p className="mb-3 text-xs font-medium text-danger">
+              Kode salah. Tanyakan lagi ke pengawas ruangan.
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={kode.trim().length === 0}
+            className={`h-12 w-full rounded-xl bg-ink text-sm font-bold text-paper transition-colors active:bg-ink-light disabled:opacity-50 touch-manipulation ${
+              salah ? "mt-0" : "mt-3"
+            }`}
+          >
+            Buka Kunci
+          </button>
+        </form>
       </div>
     </div>
   );

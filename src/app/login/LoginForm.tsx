@@ -282,22 +282,29 @@ export default function LoginForm() {
       return;
     }
 
-    const { data: siswaRow, error: siswaErr } = await supabase
-  .from("siswa")
-  .select("id, nama")
-  .eq("auth_id", user.id)
-  .maybeSingle();
-if (siswaErr) console.error("siswa:", siswaErr);
+    const { data: siswaRow } = await supabase
+      .from("siswa")
+      .select("id, nama, kelas(nama)")
+      .eq("auth_id", user.id)
+      .maybeSingle();
 
-if (siswaRow) {
-  setSapaan({
-    nama: siswaRow.nama ?? siswaTerpilih?.nama ?? "Siswa",
-    peran: "Siswa",
-    kelas: kelasNama || null,
-  });
-  setTujuan("/siswa");
-  return;
-}
+    if (siswaRow) {
+      const kelasSiswa =
+        (siswaRow.kelas as unknown as { nama: string } | null)?.nama ??
+        // Cadangan: kelas yang dipilih sendiri di form. Dipakai kalau
+        // join ke tabel `kelas` terhalang RLS — sapaan tidak boleh
+        // gagal tampil cuma karena kelasnya tidak terbaca.
+        kelasNama ??
+        null;
+
+      setSapaan({
+        nama: siswaRow.nama ?? siswaTerpilih?.nama ?? "Siswa",
+        peran: "Siswa",
+        kelas: kelasSiswa,
+      });
+      setTujuan("/siswa");
+      return;
+    }
 
     // Akun auth valid, tapi belum didaftarkan sebagai guru/siswa DI
     // PROJECT INI. Dibatalkan supaya tidak meninggalkan sesi setengah

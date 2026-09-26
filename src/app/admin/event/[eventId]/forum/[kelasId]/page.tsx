@@ -8,6 +8,8 @@ import PanelForumKelas, {
   type PesanForum,
 } from "./PanelForumKelas";
 import { Info, KepalaHalaman, Remah, TOMBOL_BIASA } from "@/components/ui/Panel";
+import type { PesanKutipan } from "@/components/forum/KutipanBalas";
+import { kelompokkanReaksi, type BarisReaksi } from "@/components/forum/ReaksiPesan";
 
 /**
  * Ruang obrolan SATU kelas di dalam sebuah forum.
@@ -29,6 +31,24 @@ export default async function ForumRuangKelasPage({
   params: { eventId: string; kelasId: string };
 }) {
   const supabase = createClient();
+
+  // Dibutuhkan <PemilihReaksi> (Part 6): guru yang sedang login harus tahu
+  // reaksi MILIKNYA SENDIRI di tiap pesan (beda dari agregat semua guru,
+  // `reaksiKelompok`). Disalin dari `guruSaatIni` di `actions.ts` (helper
+  // itu tidak diekspor) — pola yang sama dengan berkas ini sendiri, yang
+  // dari dulu tidak pernah mengimpor helper privat Server Action.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  let guruIdSaya = "";
+  if (user) {
+    const { data: guruRow } = await supabase
+      .from("guru")
+      .select("id")
+      .eq("auth_id", user.id)
+      .maybeSingle();
+    guruIdSaya = (guruRow?.id as string | undefined) ?? "";
+  }
 
   const { data: event } = await supabase
     .from("event")
@@ -76,10 +96,13 @@ export default async function ForumRuangKelasPage({
         .select("id, nama, username")
         .eq("kelas_id", params.kelasId)
         .order("nama"),
+      // `gambar_url`, `balas_ke_id`, `forum_reaksi` datang dari migrasi
+      // 0021 — kalau belum dijalankan di project jenjang ini, SELECT ini
+      // gagal untuk SELURUH ruang forum (bukan cuma fitur barunya saja).
       supabase
         .from("forum_pesan")
         .select(
-          "id, siswa_id, guru_id, isi, jenis_isi, bonus_diberikan, created_at, siswa(nama), guru(nama)"
+          "id, siswa_id, guru_id, isi, jenis_isi, gambar_url, balas_ke_id, bonus_diberikan, created_at, siswa(nama), guru(nama), forum_reaksi(guru_id, emoji)"
         )
         .eq("forum_topik_id", topik.id)
         .eq("kelas_id", params.kelasId)
@@ -91,13 +114,34 @@ export default async function ForumRuangKelasPage({
         .eq("kelas_id", params.kelasId),
     ]);
 
-  const pesan: PesanForum[] = (pesanList ?? []).map((p) => {
+  const barisPesan = pesanList ?? [];
+
+  // Kutipan pesan yang dibalas diambil dari DAFTAR YANG SAMA (bukan
+  // self-join Supabase): `balas_ke_id` cuma boleh menunjuk pesan di
+  // forum_topik + kelas yang sama (ditegakkan di `kirimPesanGuru` /
+  // `kirimPesanSiswa`), jadi pesan aslinya sudah pasti ada di sini.
+  const petaPesan = new Map<string, PesanKutipan>();
+  for (const p of barisPesan) {
     const siswaNama = (p.siswa as unknown as { nama: string } | null)?.nama;
     const guruNama = (p.guru as unknown as { nama: string } | null)?.nama;
+    petaPesan.set(p.id as string, {
+      id: p.id as string,
+      pengirim: p.guru_id !== null ? (guruNama ?? "Guru") : (siswaNama ?? "Siswa"),
+      jenis_isi: p.jenis_isi as PesanKutipan["jenis_isi"],
+      isi: p.isi as string,
+    });
+  }
+
+  const pesan: PesanForum[] = barisPesan.map((p) => {
+    const siswaNama = (p.siswa as unknown as { nama: string } | null)?.nama;
+    const guruNama = (p.guru as unknown as { nama: string } | null)?.nama;
+    const balasKeId = p.balas_ke_id as string | null;
+    const barisReaksi = (p.forum_reaksi ?? []) as BarisReaksi[];
     return {
       id: p.id as string,
       isi: p.isi as string,
-      jenisIsi: p.jenis_isi as "teks" | "sticker" | "emoticon",
+      jenisIsi: p.jenis_isi as PesanForum["jenisIsi"],
+      gambarUrl: (p.gambar_url as string | null) ?? null,
       createdAt: p.created_at as string,
       bonusDiberikan: Boolean(p.bonus_diberikan),
       dari:
@@ -105,6 +149,10 @@ export default async function ForumRuangKelasPage({
           ? { tipe: "guru" as const, nama: guruNama ?? "Guru" }
           : { tipe: "siswa" as const, nama: siswaNama ?? "Siswa" },
       siswaId: (p.siswa_id as string | null) ?? null,
+      balasKe: balasKeId ? (petaPesan.get(balasKeId) ?? null) : null,
+      reaksiSaya:
+        barisReaksi.find((r) => r.guru_id === guruIdSaya)?.emoji ?? null,
+      reaksiKelompok: kelompokkanReaksi(barisReaksi, guruIdSaya || null),
     };
   });
 
@@ -196,6 +244,7 @@ export default async function ForumRuangKelasPage({
         kelasId={params.kelasId}
         pesanAwal={pesan}
         poinAwal={barisPoin}
+        guruIdSaya={guruIdSaya}
       />
     </div>
   );

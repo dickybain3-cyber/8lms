@@ -9,6 +9,11 @@ import {
   labelJenisEvent,
   type JenisEvent,
 } from "@/lib/jenis-event";
+import {
+  apakahUuid,
+  emojiReaksiValid,
+  BATAS_PANJANG_PESAN,
+} from "@/lib/forum";
 
 export type ActionState = { error: string | null };
 
@@ -324,6 +329,17 @@ export async function deleteForumTopik(
  * pembuka) atau setelah ditutup (mis. mengumumkan hasil rekap). Yang
  * dibatasi jendela waktu hanya SISWA (lihat `bolehMengirimPesan` di
  * `forum.ts`, dicerminkan policy `forum_pesan_insert_siswa`).
+ *
+ * ── BALASAN (`balas_ke_id`, 0021) ──
+ *
+ * Field FormData opsional `balas_ke_id` = id pesan yang dikutip (gestur
+ * geser-kanan di UI guru). Pesan yang dibalas boleh dari siswa MAUPUN
+ * guru lain, tapi WAJIB di forum_topik + kelas yang sama dengan pesan
+ * baru ini. Ini dicek eksplisit dengan filter `forum_topik_id` +
+ * `kelas_id`, bukan diandalkan dari RLS: policy `forum_pesan_guru_all`
+ * membolehkan guru membaca SEMUA ruang, jadi tanpa filter itu, id dari
+ * ruang kelas lain akan lolos dan kutipannya bocor ke ruang ini. FK saja
+ * hanya menjamin id-nya ada.
  */
 export async function kirimPesanGuru(
   eventId: string,
@@ -336,8 +352,15 @@ export async function kirimPesanGuru(
   if (!isi) {
     return { error: "Pesan tidak boleh kosong." };
   }
-  if (isi.length > 2000) {
-    return { error: "Pesan terlalu panjang (maksimal 2000 karakter)." };
+  if (isi.length > BATAS_PANJANG_PESAN) {
+    return {
+      error: `Pesan terlalu panjang (maksimal ${BATAS_PANJANG_PESAN} karakter).`,
+    };
+  }
+
+  const balasKeId = String(formData.get("balas_ke_id") ?? "").trim();
+  if (balasKeId && !apakahUuid(balasKeId)) {
+    return { error: "Pesan yang dibalas tidak valid." };
   }
 
   const supabase = createClient();
@@ -346,15 +369,37 @@ export async function kirimPesanGuru(
     return { error: "Sesi guru tidak ditemukan. Masuk lagi ya." };
   }
 
+  if (balasKeId) {
+    const { data: dibalas } = await supabase
+      .from("forum_pesan")
+      .select("id")
+      .eq("id", balasKeId)
+      .eq("forum_topik_id", forumTopikId)
+      .eq("kelas_id", kelasId)
+      .maybeSingle();
+    if (!dibalas) {
+      return { error: "Pesan yang mau dibalas tidak ditemukan di ruang ini." };
+    }
+  }
+
+  // `balas_ke_id` hanya masuk payload kalau terisi — pesan biasa tetap
+  // jalan di project yang migrasi 0021-nya belum dijalankan.
   const { error } = await supabase.from("forum_pesan").insert({
     forum_topik_id: forumTopikId,
     kelas_id: kelasId,
     guru_id: guruId,
     isi,
     jenis_isi: "teks",
+    ...(balasKeId ? { balas_ke_id: balasKeId } : {}),
   });
 
   if (error) {
+    if (balasKeId) {
+      return {
+        error:
+          "Gagal mengirim balasan. Kalau ini terus terjadi, kemungkinan migrasi 0021 belum dijalankan di database jenjang ini.",
+      };
+    }
     return { error: "Gagal mengirim pesan. Coba lagi." };
   }
 
@@ -422,4 +467,102 @@ export async function toggleBonusPesan(
 
   revalidatePath(`/admin/event/${eventId}/forum/${kelasId}`);
   return { error: null, bonusDiberikan: bonusBaru };
+}
+
+/**
+ * Reaksi emoji GURU pada satu bubble pesan (0021, `forum_reaksi`).
+ *
+ * ── TOGGLE DARI KEADAAN DATABASE, BUKAN DARI KLIEN ──
+ *
+ * Sama pola dengan `toggleBonusPesan`: keadaan sekarang dibaca dulu, lalu
+ *   - belum ada reaksi guru ini        -> tambah
+ *   - ada, emoji SAMA dengan yang dikirim -> hapus (batal)
+ *   - ada, emoji BEDA                  -> ganti (upsert baris yang sama)
+ * Primary key (pesan_id, guru_id) menjamin satu guru maksimal satu emoji
+ * per pesan; upsert memakainya, jadi dua tab yang berebut tidak bisa
+ * membuat baris kedua.
+ *
+ * ── YANG DITEGAKKAN DI SINI, BUKAN OLEH RLS ──
+ *
+ * 1. `emoji` harus salah satu `REAKSI_TERSEDIA`. Kolomnya `text` bebas dan
+ *    policy `forum_reaksi_guru_all` tidak memeriksa isinya.
+ * 2. Pesan harus ada di `kelasId` yang sedang dibuka (guru boleh membaca
+ *    semua ruang, jadi tanpa filter ini id dari ruang lain ikut lolos dan
+ *    `revalidatePath` menyegarkan halaman yang salah).
+ *
+ * Hasil balik `emoji` = keadaan akhir di database (null = tidak ada
+ * reaksi), dipakai klien untuk mengoreksi tampilan optimistiknya.
+ */
+export async function toggleReaksiPesan(
+  eventId: string,
+  kelasId: string,
+  pesanId: string,
+  emoji: string
+): Promise<{ error: string | null; emoji: string | null }> {
+  if (!emojiReaksiValid(emoji)) {
+    return { error: "Emoji reaksi tidak tersedia.", emoji: null };
+  }
+  if (!apakahUuid(pesanId)) {
+    return { error: "Pesan tidak valid.", emoji: null };
+  }
+
+  const supabase = createClient();
+  const guruId = await guruSaatIni(supabase);
+  if (!guruId) {
+    return { error: "Sesi guru tidak ditemukan. Masuk lagi ya.", emoji: null };
+  }
+
+  const { data: pesan } = await supabase
+    .from("forum_pesan")
+    .select("id")
+    .eq("id", pesanId)
+    .eq("kelas_id", kelasId)
+    .maybeSingle();
+  if (!pesan) {
+    return { error: "Pesan tidak ditemukan di ruang ini.", emoji: null };
+  }
+
+  const { data: ada, error: galatBaca } = await supabase
+    .from("forum_reaksi")
+    .select("emoji")
+    .eq("pesan_id", pesanId)
+    .eq("guru_id", guruId)
+    .maybeSingle();
+
+  if (galatBaca) {
+    return {
+      error:
+        "Gagal memuat reaksi. Kalau ini terus terjadi, kemungkinan migrasi 0021 belum dijalankan di database jenjang ini.",
+      emoji: null,
+    };
+  }
+
+  if (ada && ada.emoji === emoji) {
+    const { error } = await supabase
+      .from("forum_reaksi")
+      .delete()
+      .eq("pesan_id", pesanId)
+      .eq("guru_id", guruId);
+    if (error) {
+      return { error: "Gagal membatalkan reaksi. Coba lagi.", emoji: ada.emoji };
+    }
+    revalidatePath(`/admin/event/${eventId}/forum/${kelasId}`);
+    return { error: null, emoji: null };
+  }
+
+  const { error } = await supabase
+    .from("forum_reaksi")
+    .upsert(
+      { pesan_id: pesanId, guru_id: guruId, emoji },
+      { onConflict: "pesan_id,guru_id" }
+    );
+  if (error) {
+    return {
+      error: "Gagal menyimpan reaksi. Coba lagi.",
+      emoji: ada?.emoji ?? null,
+    };
+  }
+
+  revalidatePath(`/admin/event/${eventId}/forum/${kelasId}`);
+  return { error: null, emoji };
 }

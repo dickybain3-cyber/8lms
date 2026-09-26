@@ -1,20 +1,46 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import type { RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
-import { kirimPesanGuru, toggleBonusPesan, type ActionState } from "../actions";
-import { POIN_BONUS_PER_KLIK } from "@/lib/forum";
+import {
+  kirimPesanGuru,
+  toggleBonusPesan,
+  toggleReaksiPesan,
+  type ActionState,
+} from "../actions";
+import { POIN_BONUS_PER_KLIK, ISI_FOTO_TANPA_CAPTION } from "@/lib/forum";
+import {
+  BubbleGeserBalas,
+  PratinjauBalasan,
+  KutipanDiBubble,
+  type PesanKutipan,
+} from "@/components/forum/KutipanBalas";
+import {
+  PemilihReaksi,
+  LencanaReaksi,
+  type KelompokReaksi,
+} from "@/components/forum/ReaksiPesan";
 
 export interface PesanForum {
   id: string;
   isi: string;
-  jenisIsi: "teks" | "sticker" | "emoticon";
+  jenisIsi: "teks" | "sticker" | "emoticon" | "gambar";
+  gambarUrl: string | null;
   createdAt: string;
   bonusDiberikan: boolean;
   dari: { tipe: "guru" | "siswa"; nama: string };
   /** null untuk pesan guru. */
   siswaId: string | null;
+  /** Pesan yang dikutip pesan ini (balasan, 0021), atau null. */
+  balasKe: PesanKutipan | null;
+  /** Emoji milik GURU YANG SEDANG LOGIN pada pesan ini, atau null. Sengaja
+   *  dipisah dari `reaksiKelompok` (agregat semua guru) karena
+   *  <PemilihReaksi> butuh satu nilai tunggal punya guru ini, bukan daftar
+   *  yang sudah dikelompokkan. */
+  reaksiSaya: string | null;
+  reaksiKelompok: KelompokReaksi[];
 }
 
 export interface BarisPoin {
@@ -44,8 +70,10 @@ const initialState: ActionState = { error: null };
  * di satu layar), migrasi ke realtime adalah pekerjaan terpisah yang
  * pantas dipertimbangkan sendiri, bukan ditambal di sini.
  *
- * Aksi guru sendiri (kirim pesan, toggle bonus) memanggil
- * `router.refresh()` secara eksplisit begitu Server Action-nya selesai —
+ * Aksi guru sendiri (kirim pesan, toggle bonus, toggle reaksi) memicu
+ * penyegaran begitu Server Action-nya selesai (lewat `revalidatePath` di
+ * dalam Server Action untuk kirim pesan/balasan, dan `router.refresh()`
+ * eksplisit untuk bonus/reaksi yang dipanggil lewat `useTransition`) —
  * jadi guru tidak pernah menunggu sampai 5 detik untuk melihat efek
  * tindakannya sendiri. Yang menunggu polling hanya pesan BARU dari siswa.
  */
@@ -57,12 +85,14 @@ export default function PanelForumKelas({
   kelasId,
   pesanAwal,
   poinAwal,
+  guruIdSaya,
 }: {
   eventId: string;
   forumTopikId: string;
   kelasId: string;
   pesanAwal: PesanForum[];
   poinAwal: BarisPoin[];
+  guruIdSaya: string;
 }) {
   const router = useRouter();
 
@@ -81,19 +111,43 @@ export default function PanelForumKelas({
   const [pendingBonusId, setPendingBonusId] = useState<string | null>(null);
   const [, startTransitionBonus] = useTransition();
 
+  // ── Balasan (geser-kanan, Part 5) ──
+  const [balasan, setBalasan] = useState<PesanKutipan | null>(null);
+
+  // ── Lightbox foto siswa (dipasang di sini juga, bukan cuma sisi
+  //    siswa — guru perlu bisa memperbesar foto yang dikirim siswa) ──
+  const [fotoDilihat, setFotoDilihat] = useState<string | null>(null);
+
+  // ── Peringatan reaksi/toggle yang gagal, ditampilkan singkat di atas
+  //    kotak ketik lalu hilang sendiri. ──
+  const [galatAksi, setGalatAksi] = useState<string | null>(null);
+  useEffect(() => {
+    if (!galatAksi) return;
+    const id = setTimeout(() => setGalatAksi(null), 4000);
+    return () => clearTimeout(id);
+  }, [galatAksi]);
+
   const pesanTampil = pesanAwal.map((p) => ({
     ...p,
     bonusDiberikan: bonusLokal[p.id] ?? p.bonusDiberikan,
   }));
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Ref tiap bubble, dipakai <KutipanDiBubble onKlik> untuk lompat ke
+  // pesan asli yang dikutip.
+  const bubbleRefs = useRef(new Map<string, HTMLDivElement>());
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [pesanTampil.length]);
 
+  function lompatKePesan(id: string) {
+    bubbleRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   function klikBonus(pesan: PesanForum) {
     // Cermin constraint `forum_pesan_bonus_hanya_teks_siswa` (0020) di
-    // sisi UI: bubble guru dan bubble sticker/emoticon tidak punya
+    // sisi UI: bubble guru, foto, dan bubble sticker/emoticon tidak punya
     // affordance bonus sama sekali, jadi klik di situ tidak melakukan
     // apa-apa alih-alih mengirim permintaan yang pasti ditolak server.
     if (pesan.dari.tipe !== "siswa" || pesan.jenisIsi !== "teks") return;
@@ -118,8 +172,15 @@ export default function PanelForumKelas({
     });
   }
 
+  async function klikReaksi(pesanId: string, emoji: string) {
+    const hasil = await toggleReaksiPesan(eventId, kelasId, pesanId, emoji);
+    router.refresh();
+    return hasil;
+  }
+
   const action = kirimPesanGuru.bind(null, eventId, forumTopikId, kelasId);
   const [state, formAction] = useFormState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -139,13 +200,40 @@ export default function PanelForumKelas({
                 key={p.id}
                 pesan={p}
                 sedangDiproses={pendingBonusId === p.id}
-                onKlik={() => klikBonus(p)}
+                onKlikBonus={() => klikBonus(p)}
+                onBalas={() =>
+                  setBalasan({
+                    id: p.id,
+                    pengirim: p.dari.nama,
+                    jenis_isi: p.jenisIsi,
+                    isi: p.isi,
+                  })
+                }
+                onKlikKutipan={lompatKePesan}
+                onLihatFoto={setFotoDilihat}
+                onToggleReaksi={(emoji) => klikReaksi(p.id, emoji)}
+                onGalatReaksi={setGalatAksi}
+                registerRef={(el) => {
+                  if (el) bubbleRefs.current.set(p.id, el);
+                  else bubbleRefs.current.delete(p.id);
+                }}
               />
             ))
           )}
         </div>
 
-        <FormKirimGuru formAction={formAction} error={state.error} />
+        <FormKirimGuru
+          formRef={formRef}
+          formAction={(fd) => {
+            formAction(fd);
+            formRef.current?.reset();
+            setBalasan(null);
+          }}
+          error={state.error}
+          balasan={balasan}
+          onBatalBalas={() => setBalasan(null)}
+          galatAksi={galatAksi}
+        />
       </div>
 
       {/* ── Kolom poin ── */}
@@ -155,8 +243,8 @@ export default function PanelForumKelas({
         </h2>
         <p className="mb-3 text-xs leading-relaxed text-slate-500">
           1 poin tiap chat teks yang dikirim siswa · +{POIN_BONUS_PER_KLIK}{" "}
-          kalau kamu klik bubble pesannya. Sticker &amp; emoticon tidak
-          dihitung.
+          kalau kamu klik bubble pesannya. Sticker, emoticon, &amp; foto
+          tidak dihitung.
         </p>
         <div className="scroll-halus max-h-[460px] space-y-1.5 overflow-y-auto pr-1">
           {poinAwal.length === 0 ? (
@@ -170,6 +258,8 @@ export default function PanelForumKelas({
           )}
         </div>
       </div>
+
+      <Lightbox url={fotoDilihat} onClose={() => setFotoDilihat(null)} />
     </div>
   );
 }
@@ -177,24 +267,41 @@ export default function PanelForumKelas({
 // ---------------------------------------------------------------------------
 
 function FormKirimGuru({
+  formRef,
   formAction,
   error,
+  balasan,
+  onBatalBalas,
+  galatAksi,
 }: {
+  formRef: RefObject<HTMLFormElement>;
   formAction: (formData: FormData) => void;
   error: string | null;
+  balasan: PesanKutipan | null;
+  onBatalBalas: () => void;
+  galatAksi: string | null;
 }) {
   return (
     <div className="border-t border-slate-100 bg-white">
-      <form action={formAction} className="flex items-end gap-2 p-3">
-        <textarea
-          name="isi"
-          rows={1}
-          required
-          maxLength={2000}
-          placeholder="Tulis pesan sebagai guru…"
-          className="min-h-[42px] flex-1 resize-none rounded-md border border-ink/15 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/30 outline-none focus:border-gold"
-        />
-        <TombolKirim />
+      {galatAksi && (
+        <p className="border-b border-danger/20 bg-danger/5 px-3.5 py-1.5 text-xs text-danger">
+          {galatAksi}
+        </p>
+      )}
+      <form ref={formRef} action={formAction} className="p-3">
+        <PratinjauBalasan pesan={balasan} onBatal={onBatalBalas} />
+        <input type="hidden" name="balas_ke_id" value={balasan?.id ?? ""} />
+        <div className="flex items-end gap-2">
+          <textarea
+            name="isi"
+            rows={1}
+            required
+            maxLength={2000}
+            placeholder="Tulis pesan sebagai guru…"
+            className="min-h-[42px] flex-1 resize-none rounded-md border border-ink/15 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink/30 outline-none focus:border-gold"
+          />
+          <TombolKirim />
+        </div>
       </form>
       {error && (
         <p className="border-t border-danger/20 bg-danger/5 px-3.5 py-2 text-sm text-danger">
@@ -244,22 +351,49 @@ function formatJam(iso: string) {
  * sudah disiapkan di Server Component membuat komponen ini tidak perlu
  * tahu bentuk mentah baris `forum_pesan` sama sekali — kalau suatu saat
  * ada jenis pengirim ketiga, cukup ubah pemetaannya di `page.tsx`.
+ *
+ * ── GESER-KANAN UNTUK MEMBALAS (Part 5) ──
+ *
+ * Seluruh baris bubble (label nama + tombol isi + jejak waktu) dibungkus
+ * `<BubbleGeserBalas>`, bukan cuma tombol isinya — supaya area yang bisa
+ * digeser cukup lebar untuk nyaman disentuh. `onClickCapture` di dalam
+ * hook `useGeserBalas` yang menelan klik menyusul geser memastikan gestur
+ * ini tidak ikut memicu `onKlikBonus`.
  */
 function Bubble({
   pesan,
   sedangDiproses,
-  onKlik,
+  onKlikBonus,
+  onBalas,
+  onKlikKutipan,
+  onLihatFoto,
+  onToggleReaksi,
+  onGalatReaksi,
+  registerRef,
 }: {
   pesan: PesanForum & { bonusDiberikan: boolean };
   sedangDiproses: boolean;
-  onKlik: () => void;
+  onKlikBonus: () => void;
+  onBalas: () => void;
+  onKlikKutipan: (id: string) => void;
+  onLihatFoto: (url: string) => void;
+  onToggleReaksi: (
+    emoji: string
+  ) => Promise<{ error: string | null; emoji: string | null }>;
+  onGalatReaksi: (pesan: string) => void;
+  registerRef: (el: HTMLDivElement | null) => void;
 }) {
   const dariGuru = pesan.dari.tipe === "guru";
   const bisaDiklik = !dariGuru && pesan.jenisIsi === "teks";
-  const bukanTeks = pesan.jenisIsi !== "teks";
+  const isiBesar = pesan.jenisIsi === "sticker" || pesan.jenisIsi === "emoticon";
+  const adaCaption =
+    pesan.jenisIsi === "gambar" && pesan.isi.trim() !== ISI_FOTO_TANPA_CAPTION;
 
   return (
-    <div className={`flex ${dariGuru ? "justify-end" : "justify-start"}`}>
+    <div
+      ref={registerRef}
+      className={`flex ${dariGuru ? "justify-end" : "justify-start"}`}
+    >
       <div className={`max-w-[80%] ${dariGuru ? "items-end" : "items-start"} flex flex-col`}>
         <p
           className={`mb-0.5 px-1 text-[0.68rem] font-semibold text-slate-500 ${
@@ -270,39 +404,102 @@ function Bubble({
           {dariGuru && <span className="ml-1 text-slate-400">· Guru</span>}
         </p>
 
-        <button
-          type="button"
-          onClick={onKlik}
-          disabled={!bisaDiklik}
-          title={
-            bisaDiklik
-              ? pesan.bonusDiberikan
-                ? `Klik untuk membatalkan bonus +${POIN_BONUS_PER_KLIK}`
-                : `Klik untuk memberi bonus +${POIN_BONUS_PER_KLIK}`
-              : undefined
-          }
-          className={`relative rounded-2xl px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm transition-all ${
-            dariGuru
-              ? "rounded-tr-sm bg-[--primary] text-white"
-              : bukanTeks
-                ? "rounded-tl-sm border border-slate-200 bg-white text-2xl"
-                : "rounded-tl-sm border border-slate-200 bg-white text-ink"
-          } ${
-            bisaDiklik
-              ? `cursor-pointer hover:-translate-y-0.5 hover:shadow-md ${
-                  pesan.bonusDiberikan ? "ring-2 ring-amber-400" : ""
-                }`
-              : "cursor-default"
-          } ${sedangDiproses ? "opacity-60" : ""}`}
-        >
-          {pesan.isi}
+        <BubbleGeserBalas onBalas={onBalas}>
+          {/*
+            `<div role="button">`, BUKAN `<button>` — bubble ini sekarang
+            bisa membungkus elemen interaktif lain (kutipan balasan yang
+            bisa diklik, foto yang bisa diklik untuk lightbox). Meletakkan
+            <button> di dalam <button> adalah HTML tidak sah dan membuat
+            peramban menutup paksa tag button terluar, merusak layout.
+            Klik tetap ditelan gestur geser (`onClickCapture` di
+            `useGeserBalas`) dan anak-anak interaktif di dalamnya sudah
+            memanggil `stopPropagation` sendiri (lihat `KutipanDiBubble`
+            dan pemicu foto di bawah).
+          */}
+          <div
+            role="button"
+            tabIndex={bisaDiklik ? 0 : -1}
+            aria-disabled={!bisaDiklik}
+            onClick={() => {
+              if (bisaDiklik) onKlikBonus();
+            }}
+            onKeyDown={(e) => {
+              if (bisaDiklik && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                onKlikBonus();
+              }
+            }}
+            title={
+              bisaDiklik
+                ? pesan.bonusDiberikan
+                  ? `Klik untuk membatalkan bonus +${POIN_BONUS_PER_KLIK}`
+                  : `Klik untuk memberi bonus +${POIN_BONUS_PER_KLIK}`
+                : undefined
+            }
+            className={`relative w-full text-left text-sm leading-relaxed shadow-sm transition-all ${
+              pesan.jenisIsi === "gambar" ? "overflow-hidden rounded-2xl p-1.5" : "rounded-2xl px-4 py-2.5"
+            } ${
+              dariGuru
+                ? "rounded-tr-sm bg-[--primary] text-white"
+                : isiBesar
+                  ? "rounded-tl-sm border border-slate-200 bg-white text-2xl"
+                  : "rounded-tl-sm border border-slate-200 bg-white text-ink"
+            } ${
+              bisaDiklik
+                ? `cursor-pointer hover:-translate-y-0.5 hover:shadow-md ${
+                    pesan.bonusDiberikan ? "ring-2 ring-amber-400" : ""
+                  }`
+                : "cursor-default"
+            } ${sedangDiproses ? "opacity-60" : ""}`}
+          >
+            {pesan.balasKe && (
+              <div className={pesan.jenisIsi === "gambar" ? "px-1 pt-0.5" : ""}>
+                <KutipanDiBubble pesan={pesan.balasKe} onKlik={onKlikKutipan} />
+              </div>
+            )}
 
-          {pesan.bonusDiberikan && (
-            <span className="absolute -right-2 -top-2 flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.5 text-[0.62rem] font-bold text-amber-950 shadow">
-              <i className="fas fa-star" aria-hidden />+{POIN_BONUS_PER_KLIK}
-            </span>
-          )}
-        </button>
+            {pesan.jenisIsi === "gambar" && pesan.gambarUrl ? (
+              <>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onLihatFoto(pesan.gambarUrl as string);
+                  }}
+                  className="block"
+                >
+                  <img
+                    src={pesan.gambarUrl}
+                    alt={adaCaption ? pesan.isi : "Foto dari siswa"}
+                    loading="lazy"
+                    className="max-h-72 w-full rounded-xl object-cover"
+                  />
+                </span>
+                {adaCaption && (
+                  <p className="px-2 pb-1 pt-1.5 text-sm text-ink">{pesan.isi}</p>
+                )}
+              </>
+            ) : (
+              pesan.isi
+            )}
+
+            {pesan.bonusDiberikan && (
+              <span className="absolute -right-2 -top-2 flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.5 text-[0.62rem] font-bold text-amber-950 shadow">
+                <i className="fas fa-star" aria-hidden />+{POIN_BONUS_PER_KLIK}
+              </span>
+            )}
+          </div>
+        </BubbleGeserBalas>
+
+        <div className={`mt-1 flex items-center gap-1.5 px-1 ${dariGuru ? "flex-row-reverse" : ""}`}>
+          <PemilihReaksi
+            emojiSaatIni={pesan.reaksiSaya}
+            onToggle={onToggleReaksi}
+            onGalat={onGalatReaksi}
+          />
+          <LencanaReaksi kelompok={pesan.reaksiKelompok} />
+        </div>
 
         <p className={`mt-0.5 px-1 text-[0.65rem] text-slate-400 ${dariGuru ? "text-right" : "text-left"}`}>
           {formatJam(pesan.createdAt)}
@@ -342,6 +539,46 @@ function BarisPoinItem({
       <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold tabular-nums text-slate-700">
         {baris.total}
       </span>
+    </div>
+  );
+}
+
+/** Lightbox sederhana: latar gelap penuh layar + foto ukuran penuh, tutup
+ *  dengan klik latar, tombol X, atau Escape. Sama persis dengan versi
+ *  siswa (`FormChatForum.tsx`) — disalin, bukan dibagi lewat berkas
+ *  bersama, karena cuma ~25 baris dan dua sisi ini tidak berbagi berkas
+ *  komponen lain juga. */
+function Lightbox({ url, onClose }: { url: string | null; onClose: () => void }) {
+  useEffect(() => {
+    if (!url) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [url, onClose]);
+
+  if (!url) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Tutup"
+        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+      >
+        <i className="fas fa-xmark text-lg" aria-hidden />
+      </button>
+      <img
+        src={url}
+        alt="Foto ukuran penuh"
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[90vh] max-w-full rounded-lg object-contain"
+      />
     </div>
   );
 }

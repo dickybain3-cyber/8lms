@@ -23,6 +23,7 @@
 
 import { getCloudinaryConfig } from "@/lib/supabase/config";
 import { getJenjangFromDocumentCookie } from "@/lib/jenjang";
+import { BATAS_UKURAN_GAMBAR_BYTE } from "@/lib/forum";
 
 /** Sisi terpanjang maksimal setelah dikecilkan. Sama dengan lebar mode
  *  perbesar di layar siswa (LEBAR_ZOOM di src/lib/gambar.ts) — lebih dari
@@ -164,6 +165,169 @@ export async function kecilkanGambar(file: File): Promise<HasilKompresi> {
     lebar,
     tinggi,
     dikompres: true,
+  };
+}
+
+/**
+ * ── KOMPRESI KHUSUS FOTO FORUM CHAT ──
+ *
+ * Beda dari `kecilkanGambar` (dipakai guru untuk gambar soal) dalam tiga
+ * hal, semuanya karena target ukurannya jauh lebih ketat
+ * (`BATAS_UKURAN_GAMBAR_BYTE` = 200 KB, lihat forum.ts):
+ *
+ *   1. Tidak ada jalur "lewati kompresi" untuk berkas kecil — berkas
+ *      300 KB tetap harus dicek, karena 300 KB > 200 KB.
+ *   2. Kualitas JPEG diturunkan bertahap, dan kalau kualitas terendah
+ *      masih di atas batas, RESOLUSI ikut diturunkan lalu kualitas
+ *      dicoba ulang dari atas. `kecilkanGambar` cuma encode sekali.
+ *   3. Selalu keluar JPEG — termasuk PNG dan gambar dengan transparansi
+ *      (transparansi diganti latar putih). Forum chat tidak butuh
+ *      transparansi, dan mempertahankan PNG (seperti `kecilkanGambar`)
+ *      justru yang bikin tangkapan layar sering di atas 200 KB.
+ *
+ * GIF TIDAK didukung di sini (lihat `JENIS_DIDUKUNG_CHAT`) — alasan sama
+ * dengan `kecilkanGambar`: canvas cuma menyalin bingkai pertama, dan chat
+ * foto lebih sering dari kamera/galeri daripada GIF animasi.
+ *
+ * Melempar `Error` berbahasa manusia kalau target tidak tercapai bahkan
+ * setelah diperkecil sampai `SISI_MIN` — SENGAJA tidak diam-diam
+ * mengembalikan berkas yang masih di atas batas seperti `kecilkanGambar`
+ * lama, karena bubble chat yang kelewat berat justru masalah yang mau
+ * dihindari fitur ini.
+ */
+
+/** Di bawah sisi ini, gambar sudah terlalu kecil untuk berguna di bubble
+ *  chat — lebih baik gagal dengan pesan jelas daripada terus mengecilkan
+ *  sampai jadi kotak buram beberapa piksel. */
+const SISI_MIN_CHAT = 320;
+
+/** Kualitas JPEG dicoba dari yang terbaik dulu; begitu satu langkah
+ *  muat di bawah batas, berhenti — supaya tidak mengecilkan lebih dari
+ *  perlu. */
+const KUALITAS_LANGKAH_CHAT = [0.85, 0.7, 0.55, 0.4] as const;
+
+/** Tiap kali satu putaran kualitas gagal semua, sisi terpanjang
+ *  diperkecil ke 80% sebelum putaran kualitas diulang dari awal. */
+const FAKTOR_PENGECILAN_CHAT = 0.8;
+
+export const JENIS_DIDUKUNG_CHAT = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/bmp",
+];
+
+export const ACCEPT_GAMBAR_CHAT = JENIS_DIDUKUNG_CHAT.join(",");
+
+export interface HasilKompresiChat {
+  berkas: Blob;
+  ukuranAsli: number;
+  ukuranAkhir: number;
+  lebar: number;
+  tinggi: number;
+}
+
+export async function kecilkanGambarChat(
+  file: File
+): Promise<HasilKompresiChat> {
+  const ukuranAsli = file.size;
+
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) {
+    throw new Error(
+      "Berkas gambar tidak bisa dibaca. Coba format lain (JPG, PNG, atau WebP)."
+    );
+  }
+
+  let sisiTerpanjang = Math.min(SISI_MAKS, Math.max(bitmap.width, bitmap.height));
+  let hasil: { blob: Blob; lebar: number; tinggi: number } | null = null;
+
+  while (sisiTerpanjang >= SISI_MIN_CHAT && !hasil) {
+    const rasio = sisiTerpanjang / Math.max(bitmap.width, bitmap.height);
+    const lebar = Math.max(1, Math.round(bitmap.width * rasio));
+    const tinggi = Math.max(1, Math.round(bitmap.height * rasio));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = lebar;
+    canvas.height = tinggi;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close?.();
+      throw new Error("Kanvas gambar tidak didukung di peramban ini.");
+    }
+
+    // Latar putih dulu — hasil akhir selalu JPEG (tanpa alpha), jadi PNG
+    // bertransparansi yang langsung digambar di atas kanvas kosong akan
+    // menghitam tanpa baris ini.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, lebar, tinggi);
+    ctx.drawImage(bitmap, 0, 0, lebar, tinggi);
+
+    for (const kualitas of KUALITAS_LANGKAH_CHAT) {
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", kualitas)
+      );
+      if (blob && blob.size <= BATAS_UKURAN_GAMBAR_BYTE) {
+        hasil = { blob, lebar, tinggi };
+        break;
+      }
+    }
+
+    if (!hasil) {
+      sisiTerpanjang = Math.round(sisiTerpanjang * FAKTOR_PENGECILAN_CHAT);
+    }
+  }
+
+  bitmap.close?.();
+
+  if (!hasil) {
+    throw new Error(
+      `Foto masih di atas ${formatUkuran(BATAS_UKURAN_GAMBAR_BYTE)} meski sudah dikecilkan sampai sisi terpanjang ${SISI_MIN_CHAT}px. Coba foto lain yang lebih sederhana (bukan tangkapan layar penuh teks/grafik), atau potong bagian yang tidak perlu.`
+    );
+  }
+
+  return {
+    berkas: hasil.blob,
+    ukuranAsli,
+    ukuranAkhir: hasil.blob.size,
+    lebar: hasil.lebar,
+    tinggi: hasil.tinggi,
+  };
+}
+
+/**
+ * Validasi → kecilkan (agresif, target ≤200 KB) → unggah, jadi satu
+ * panggilan — versi chat forum dari `prosesDanUnggah`. Dipakai
+ * `FormChatForum.tsx` (Part 3), belum dipasang di sana.
+ */
+export async function prosesDanUnggahGambarChat(file: File): Promise<{
+  url: string;
+  info: string;
+}> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Berkas yang dipilih bukan gambar.");
+  }
+  if (!JENIS_DIDUKUNG_CHAT.includes(file.type)) {
+    const jenis = file.type.replace("image/", "").toUpperCase();
+    const pesanGif =
+      file.type === "image/gif"
+        ? " GIF tidak didukung di chat karena animasinya akan hilang."
+        : "";
+    throw new Error(
+      `Format ${jenis} belum didukung.${pesanGif} Pakai JPG, PNG, atau WebP.`
+    );
+  }
+
+  const hasil = await kecilkanGambarChat(file);
+
+  const namaDasar = (file.name || "foto-chat").replace(/\.[^.]+$/, "");
+  const namaBerkas = `${namaDasar}.jpg`;
+
+  const url = await uploadKeCloudinary(hasil.berkas, namaBerkas);
+
+  return {
+    url,
+    info: `${hasil.lebar}×${hasil.tinggi} px · ${formatUkuran(hasil.ukuranAsli)} → ${formatUkuran(hasil.ukuranAkhir)}`,
   };
 }
 
