@@ -282,12 +282,15 @@ export default function LoginForm() {
       return;
     }
 
-    const { data: siswaRow } = await supabase
-      .from("siswa")
-      .select("id, nama, kelas(nama)")
-      .eq("auth_id", user.id)
-      .maybeSingle();
+const { data: siswaRow, error: siswaError } = await supabase
+  .from("siswa")
+  .select("id, nama, kelas!siswa_kelas_id_fkey(nama)")
+  .eq("auth_id", user.id)
+  .maybeSingle();
 
+if (siswaError) {
+  console.error("Gagal ambil data siswa:", siswaError);
+}
     if (siswaRow) {
       const kelasSiswa =
         (siswaRow.kelas as unknown as { nama: string } | null)?.nama ??
