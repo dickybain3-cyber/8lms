@@ -29,6 +29,13 @@
  * sistem sama sekali.
  */
 
+// `untukInputDatetime` (di bawah) didelegasikan ke `waktu-wib.ts` — satu-
+// satunya impor di berkas ini, sengaja dibiarkan tampak jelas di sini,
+// bukan disembunyikan di tengah berkas. `waktu-wib.ts` sama "murni"-nya
+// (tanpa Supabase/next/React), jadi tidak melanggar alasan file ini
+// dipusatkan tanpa dependensi berat.
+import { isoKeDatetimeLocalWib } from "@/lib/waktu-wib";
+
 /** Bentuk minimal tugas yang dibutuhkan perhitungan di berkas ini. */
 export interface TugasWaktu {
   dibuka_at: string;
@@ -269,41 +276,31 @@ export function formatTenggat(iso: string): string {
 /**
  * ISO -> nilai untuk `<input type="datetime-local">` ("2026-09-21T08:00").
  *
- * ── KENAPA TANPA `timeZone` EKSPLISIT, PADAHAL SELURUH APLIKASI INI
- *    MENAMPILKAN WAKTU DALAM Asia/Jakarta ──
+ * ── DIPERBAIKI: SEKARANG EKSPLISIT WIB, BUKAN LAGI BERGANTUNG ZONA
+ *    PROSES SERVER ──
  *
- * `<input type="datetime-local">` mengirim string POLOS tanpa zona. Server
- * Action menafsirkannya dengan `new Date(string)`, yang memakai zona waktu
- * PROSES SERVER. Jadi supaya angka yang dibaca guru sama dengan angka yang
- * tersimpan, yang dipakai untuk MENAMPILKAN harus zona yang sama dengan
- * yang dipakai untuk MEMBACA — yaitu zona server, bukan zona yang
- * dipaksakan.
+ * Versi sebelumnya sengaja memakai zona waktu PROSES SERVER (lewat
+ * `d.getHours()` dkk) supaya konsisten dengan cara Server Action menulis
+ * `new Date(nilaiDatetimeLocal)` (yang saat itu JUGA memakai zona proses).
+ * Itu bekerja HANYA KALAU proses servernya diset `TZ=Asia/Jakarta` di
+ * semua tempat kode ini berjalan — sekali lupa (mis. deploy baru,
+ * platform hosting yang defaultnya UTC), admin mengetik "07.00" dan
+ * tersimpan sebagai jam yang salah 7 jam.
  *
- * Kalau di sini dipaksa `timeZone: "Asia/Jakarta"` sementara servernya
- * berjalan di UTC, guru akan membuka form yang menampilkan "08.00",
- * menekan Simpan tanpa mengubah apa pun, dan tenggatnya diam-diam
- * bergeser tujuh jam. Bug jenis itu tidak pernah terlihat saat dites di
- * laptop yang jamnya memang WIB.
+ * Sekarang penulisannya (lihat `datetimeLocalKeIsoWib` di
+ * `waktu-wib.ts`) sudah eksplisit WIB lewat offset `+07:00`, tidak lagi
+ * bergantung zona proses — jadi pembacaannya di sini HARUS ikut eksplisit
+ * juga (`isoKeDatetimeLocalWib`, pakai `timeZone: "Asia/Jakarta"`
+ * eksplisit), supaya dua arahnya tetap simetris. Nama fungsi ini
+ * dipertahankan (dipakai 6 berkas form Tugas & Forum) — cuma isinya yang
+ * berubah.
  *
- * Konsekuensinya satu, dan harus dipenuhi saat deploy: PROSES SERVER
- * WAJIB BERJALAN DI Asia/Jakarta (`TZ=Asia/Jakarta`). Itu syarat yang
- * sudah berlaku sejak mesin ujian — `createMapel` menafsirkan jadwal mapel
- * dengan cara yang sama persis. Fungsi ini sengaja tidak "memperbaiki"
- * sepihak apa yang di tempat lain dibiarkan apa adanya; dua mesin yang
- * menafsirkan jam dengan aturan berbeda jauh lebih berbahaya daripada
- * satu aturan yang konsisten dan ditulis terang-terangan.
- *
- * WAJIB DIPANGGIL DARI SERVER COMPONENT, bukan dari komponen client —
- * di browser, "zona lokal" adalah zona HP siswa/guru, dan seluruh alasan
- * di atas langsung runtuh.
+ * Konsekuensinya justru berkurang, bukan bertambah: fungsi ini SEKARANG
+ * BOLEH dipanggil dari Client Component juga, karena hasilnya tidak lagi
+ * bergantung di mana kode ini kebetulan dieksekusi.
  */
 export function untukInputDatetime(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  );
+  return isoKeDatetimeLocalWib(iso);
 }
 
 export function formatUkuranBerkas(bytes: number | null | undefined): string {

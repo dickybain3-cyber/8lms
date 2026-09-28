@@ -14,6 +14,9 @@ import {
 import BadgeJenjang from "@/components/admin/BadgeJenjang";
 import type { Jenjang } from "@/lib/jenjang";
 import { unduhExcelRekapNilai, type KelasRekapNilai } from "@/lib/excel";
+import { muatAnalisisButir } from "@/app/admin/statistik/actions";
+import AnalisisButir from "@/components/admin/Statistik/AnalisisButir";
+import type { AnalisisButirSoal } from "@/types";
 
 export interface SoalRingkas {
   id: string;
@@ -289,6 +292,7 @@ export default function NilaiTable({
   const [pendingRecompute, startRecompute] = useTransition();
   const [recomputeMsg, setRecomputeMsg] = useState<string | null>(null);
   const [mengunduh, setMengunduh] = useState(false);
+  const [pesanUnduh, setPesanUnduh] = useState<string | null>(null);
 
   /**
    * Filter kelas — mapel bisa ditarget ke beberapa kelas sekaligus
@@ -332,6 +336,7 @@ export default function NilaiTable({
 
   async function unduhRekap() {
     setMengunduh(true);
+    setPesanUnduh(null);
     try {
       // Dikelompokkan per kelas TERLEPAS dari kelasFilter tunggal/semua —
       // satu sheet per kelas selalu, sesuai urutan `daftarKelas` yang
@@ -359,12 +364,36 @@ export default function NilaiTable({
           }),
       }));
 
+      // Sheet "Analisis Butir" ikut ditambahkan ke file yang sama kalau
+      // datanya tersedia. Kegagalan memuatnya (mis. migrasi 0012 belum
+      // dijalankan di project ini) TIDAK boleh menggagalkan unduhan
+      // rekap nilainya — guru tetap mendapat file per kelas, plus
+      // penjelasan kenapa sheet analisisnya tidak ada.
+      let analisisButir: AnalisisButirSoal[] | undefined;
+      const hasilAnalisis = await muatAnalisisButir(jenjang, mapelId);
+      if (hasilAnalisis.ok) {
+        if (hasilAnalisis.data.some((d) => d.jumlah_peserta > 0)) {
+          analisisButir = hasilAnalisis.data;
+        }
+      } else {
+        setPesanUnduh(
+          `Rekap nilai terunduh, tetapi sheet Analisis Butir dilewati: ${hasilAnalisis.error}`
+        );
+      }
+
       await unduhExcelRekapNilai({
         mapelNama,
         eventNama,
         tahunAjaran,
         perKelas,
+        analisisButir,
       });
+    } catch (e) {
+      setPesanUnduh(
+        e instanceof Error
+          ? `Gagal menyiapkan file Excel: ${e.message}`
+          : "Gagal menyiapkan file Excel."
+      );
     } finally {
       setMengunduh(false);
     }
@@ -437,6 +466,7 @@ export default function NilaiTable({
         {recomputeMsg && (
           <p className="text-xs text-ink/60">{recomputeMsg}</p>
         )}
+        {pesanUnduh && <p className="text-xs text-danger">{pesanUnduh}</p>}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-ink/10 bg-white">
@@ -468,6 +498,18 @@ export default function NilaiTable({
           Tidak ada siswa di kelas ini.
         </p>
       )}
+
+      {/* Analisis butir dihitung per MAPEL (semua kelas yang ditarget),
+          bukan per kelas yang sedang disaring di atas. */}
+      <div className="mt-6 rounded-lg border border-ink/10 bg-white p-4">
+        <AnalisisButir
+          mapelId={mapelId}
+          jenjang={jenjang}
+          mapelNama={mapelNama}
+          eventNama={eventNama}
+          tahunAjaran={tahunAjaran}
+        />
+      </div>
     </div>
   );
 }

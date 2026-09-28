@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { datetimeLocalKeIsoWib } from "@/lib/waktu-wib";
 import {
   jenisEventValid,
   pakaiMesinUjian,
@@ -363,6 +364,17 @@ export async function createMapel(
   const galatDurasi = validasiDurasi(durasi, waktuMulai, waktuSelesai);
   if (galatDurasi) return { error: galatDurasi };
 
+  // Dikonversi eksplisit sebagai WIB (lihat waktu-wib.ts) — BUKAN
+  // `new Date(waktuMulai).toISOString()` langsung, yang dulu menafsirkan
+  // "07.00" sebagai zona waktu PROSES SERVER (kerap UTC di produksi),
+  // bukan WIB, dan berakibat jam ujian tertulis 7 jam lebih lambat dari
+  // yang diketik admin.
+  const waktuMulaiIso = datetimeLocalKeIsoWib(waktuMulai);
+  const waktuSelesaiIso = datetimeLocalKeIsoWib(waktuSelesai);
+  if (!waktuMulaiIso || !waktuSelesaiIso) {
+    return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
+  }
+
   const supabase = createClient();
 
   // Penjaga Tahap 3: mapel/soal cuma untuk event yang memakai mesin ujian
@@ -384,8 +396,8 @@ export async function createMapel(
     .insert({
       event_id: eventId,
       nama,
-      waktu_mulai: new Date(waktuMulai).toISOString(),
-      waktu_selesai: new Date(waktuSelesai).toISOString(),
+      waktu_mulai: waktuMulaiIso,
+      waktu_selesai: waktuSelesaiIso,
       durasi_menit: durasi,
     })
     .select("id")
@@ -443,14 +455,20 @@ export async function updateMapel(
   const galatDurasi = validasiDurasi(durasi, waktuMulai, waktuSelesai);
   if (galatDurasi) return { error: galatDurasi };
 
+  const waktuMulaiIso = datetimeLocalKeIsoWib(waktuMulai);
+  const waktuSelesaiIso = datetimeLocalKeIsoWib(waktuSelesai);
+  if (!waktuMulaiIso || !waktuSelesaiIso) {
+    return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
+  }
+
   const supabase = createClient();
 
   const { error: mapelError } = await supabase
     .from("mapel")
     .update({
       nama,
-      waktu_mulai: new Date(waktuMulai).toISOString(),
-      waktu_selesai: new Date(waktuSelesai).toISOString(),
+      waktu_mulai: waktuMulaiIso,
+      waktu_selesai: waktuSelesaiIso,
       durasi_menit: durasi,
     })
     .eq("id", mapelId);

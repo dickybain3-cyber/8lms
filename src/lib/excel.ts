@@ -26,6 +26,8 @@
  * PRASYARAT: jalankan `npm install exceljs` (lihat PETUNJUK-REVISI.md).
  */
 
+import type { AnalisisButirSoal } from "@/types";
+
 export interface KolomExcel {
   header: string;
   /** Kunci properti pada objek baris. */
@@ -259,6 +261,10 @@ export async function unduhExcelRekapNilai(opts: {
   eventNama: string;
   tahunAjaran: string;
   perKelas: KelasRekapNilai[];
+  /** Kalau diisi, ditambahkan satu sheet "Analisis Butir" di akhir file
+   *  (analisis butir dihitung per MAPEL, bukan per kelas, jadi cuma satu
+   *  sheet — bukan satu per kelas). */
+  analisisButir?: AnalisisButirSoal[];
 }): Promise<void> {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
@@ -385,6 +391,15 @@ export async function unduhExcelRekapNilai(opts: {
     ws.views = [{ state: "frozen", ySplit: barisHeader }];
   }
 
+  if (opts.analisisButir && opts.analisisButir.length > 0) {
+    tulisSheetAnalisisButir(wb, {
+      mapelNama: opts.mapelNama,
+      eventNama: opts.eventNama,
+      tahunAjaran: opts.tahunAjaran,
+      baris: opts.analisisButir,
+    });
+  }
+
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -400,6 +415,207 @@ export async function unduhExcelRekapNilai(opts: {
       : "semua_kelas";
   a.download = `rekap_nilai_${slugMapel}_${slugCakupan}.xlsx`;
 
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ===========================================================================
+// ANALISIS BUTIR SOAL — satu sheet per mapel
+// ===========================================================================
+
+const LABEL_TIPE_SOAL: Record<string, string> = {
+  pilgan_biasa: "Pilihan Ganda",
+  pilgan_kompleks: "Pilihan Ganda Kompleks",
+  uraian_singkat: "Uraian Singkat",
+  benar_salah: "Benar / Salah",
+  multi_benar_salah: "Benar / Salah Majemuk",
+  menjodohkan: "Menjodohkan",
+};
+
+const LABEL_KATEGORI_BUTIR: Record<string, string> = {
+  mudah: "Mudah",
+  sedang: "Sedang",
+  sulit: "Sulit",
+};
+
+/** Warna latar sel Kategori: hijau muda = mudah, kuning = sedang, merah muda = sulit. */
+const WARNA_KATEGORI_BUTIR: Record<string, string> = {
+  mudah: "FFDCFCE7",
+  sedang: "FFFEF9C3",
+  sulit: "FFFEE2E2",
+};
+
+const KOLOM_ANALISIS = 11;
+
+function tulisSheetAnalisisButir(
+  wb: import("exceljs").Workbook,
+  opts: {
+    mapelNama: string;
+    eventNama: string;
+    tahunAjaran: string;
+    baris: AnalisisButirSoal[];
+  }
+): void {
+  const ws = wb.addWorksheet("Analisis Butir");
+
+  ws.columns = [
+    { width: 9 }, // No Soal
+    { width: 24 }, // Tipe
+    { width: 11 }, // Skor Maks
+    { width: 10 }, // Peserta
+    { width: 9 }, // Benar
+    { width: 10 }, // Sebagian
+    { width: 9 }, // Salah
+    { width: 9 }, // Kosong
+    { width: 12 }, // Rata-rata skor
+    { width: 10 }, // % Benar
+    { width: 12 }, // Kategori
+  ];
+
+  const kop = (
+    baris: number,
+    teks: string,
+    gaya: Partial<import("exceljs").Font>
+  ) => {
+    ws.mergeCells(baris, 1, baris, KOLOM_ANALISIS);
+    const sel = ws.getCell(baris, 1);
+    sel.value = teks;
+    sel.font = { name: "Calibri", ...gaya };
+    sel.alignment = { horizontal: "center", vertical: "middle" };
+  };
+
+  kop(1, `Analisis Butir Soal — ${opts.mapelNama}`, {
+    bold: true,
+    size: 15,
+    color: { argb: "FF1E293B" },
+  });
+  kop(2, opts.eventNama, {
+    bold: true,
+    size: 12,
+    color: { argb: "FF334155" },
+  });
+  kop(3, "SMP Negeri 8 Probolinggo", {
+    size: 11,
+    color: { argb: "FF475569" },
+  });
+  kop(4, `Tahun Ajaran ${opts.tahunAjaran}`, {
+    italic: true,
+    size: 10,
+    color: { argb: "FF64748B" },
+  });
+  ws.getRow(1).height = 22;
+  for (let r = 2; r <= 4; r++) ws.getRow(r).height = 18;
+
+  const barisHeader = 6;
+  const header = ws.getRow(barisHeader);
+  header.values = [
+    "No Soal",
+    "Tipe Soal",
+    "Skor Maks",
+    "Peserta",
+    "Benar",
+    "Sebagian",
+    "Salah",
+    "Kosong",
+    "Rata-rata Skor",
+    "% Benar",
+    "Kategori",
+  ];
+  header.eachCell((sel) => {
+    sel.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    sel.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF3B82F6" },
+    };
+    sel.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: true,
+    };
+    sel.border = {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" },
+    };
+  });
+  header.height = 28;
+
+  opts.baris.forEach((a, i) => {
+    const row = ws.getRow(barisHeader + 1 + i);
+    row.values = [
+      a.urutan,
+      LABEL_TIPE_SOAL[a.tipe] ?? a.tipe,
+      Number(a.skor_maks),
+      Number(a.jumlah_peserta),
+      Number(a.jumlah_benar),
+      Number(a.jumlah_sebagian),
+      Number(a.jumlah_salah),
+      Number(a.jumlah_kosong),
+      Number(a.rata_skor),
+      Number(a.persen_benar),
+      LABEL_KATEGORI_BUTIR[a.kategori] ?? a.kategori,
+    ];
+    row.eachCell({ includeEmpty: true }, (sel, kolomKe) => {
+      sel.border = {
+        top: { style: "thin", color: { argb: "FFE2E8F0" } },
+        left: { style: "thin", color: { argb: "FFE2E8F0" } },
+        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+        right: { style: "thin", color: { argb: "FFE2E8F0" } },
+      };
+      if (kolomKe !== 2) {
+        sel.alignment = { horizontal: "center", vertical: "middle" };
+      }
+      if (kolomKe === 11 && WARNA_KATEGORI_BUTIR[a.kategori]) {
+        sel.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: WARNA_KATEGORI_BUTIR[a.kategori] },
+        };
+      }
+    });
+  });
+
+  const barisCatatan = barisHeader + opts.baris.length + 2;
+  ws.mergeCells(barisCatatan, 1, barisCatatan, KOLOM_ANALISIS);
+  const catatan = ws.getCell(barisCatatan, 1);
+  catatan.value =
+    "Hanya siswa yang sudah mengumpulkan yang dihitung sebagai peserta. " +
+    "Benar = skor penuh; Sebagian = skor lebih dari 0 tetapi belum penuh; " +
+    "Salah = dijawab tetapi skor 0; Kosong = tidak dijawab. " +
+    "Kategori: lebih dari 70% benar = Mudah, 30–70% = Sedang, kurang dari 30% = Sulit.";
+  catatan.font = { italic: true, size: 9, color: { argb: "FF64748B" } };
+  catatan.alignment = { wrapText: true, vertical: "top" };
+  ws.getRow(barisCatatan).height = 42;
+
+  ws.views = [{ state: "frozen", ySplit: barisHeader }];
+}
+
+/** Unduh analisis butir saja (tanpa rekap per kelas). */
+export async function unduhExcelAnalisisButir(opts: {
+  mapelNama: string;
+  eventNama: string;
+  tahunAjaran: string;
+  baris: AnalisisButirSoal[];
+}): Promise<void> {
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "LMS CBT";
+  wb.created = new Date();
+
+  tulisSheetAnalisisButir(wb, opts);
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `analisis_butir_${opts.mapelNama.replace(/\s+/g, "_").toLowerCase()}.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

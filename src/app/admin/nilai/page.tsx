@@ -24,6 +24,64 @@ function formatWaktu(iso: string) {
   });
 }
 
+/**
+ * Pesan saat daftar siswa kosong. Ada TIGA penyebab yang dulu semuanya
+ * tampil sebagai kalimat yang sama ("Belum ada siswa yang ditarget"):
+ *   1. query database gagal (RLS, kolom/tabel tidak ada, jaringan) —
+ *      sebelumnya errornya dibuang diam-diam;
+ *   2. mapel belum ditautkan ke kelas mana pun (`mapel_kelas` kosong);
+ *   3. kelas target sudah ada tapi belum berisi siswa.
+ * Ketiganya punya perbaikan berbeda, jadi harus dibedakan di layar.
+ */
+function PesanDaftarKosong({
+  galat,
+  jumlahKelasTarget,
+}: {
+  galat: string | null;
+  jumlahKelasTarget: number;
+}) {
+  if (galat) {
+    return (
+      <div className="rounded-md border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+        <p className="font-medium">Daftar nilai gagal dimuat.</p>
+        <p className="mt-1 break-words text-xs">{galat}</p>
+        <p className="mt-2 text-xs text-danger/80">
+          Ini bukan berarti mapel belum punya siswa — database menolak atau
+          gagal menjawab salah satu query di atas. Coba muat ulang halaman;
+          kalau pesan yang sama muncul lagi, kirimkan pesan tersebut ke
+          pengembang.
+        </p>
+      </div>
+    );
+  }
+
+  if (jumlahKelasTarget === 0) {
+    return (
+      <div className="rounded-md border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-ink/80">
+        <p className="font-medium">Mapel ini belum punya kelas target.</p>
+        <p className="mt-1 text-xs text-ink/60">
+          Daftar siswa diambil dari kelas yang dicentang di mapel. Buka
+          Kelola Kegiatan → pilih kegiatan → mapel ini → Edit Mapel, lalu
+          centang kelas yang mengikuti ujian.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-ink/80">
+      <p className="font-medium">
+        Mapel ini ditargetkan ke {jumlahKelasTarget} kelas, tetapi kelas itu
+        belum berisi siswa.
+      </p>
+      <p className="mt-1 text-xs text-ink/60">
+        Periksa menu Data Siswa — siswa harus sudah terdaftar di kelas
+        targetnya.
+      </p>
+    </div>
+  );
+}
+
 async function MapelPicker() {
   const supabase = createClient();
 
@@ -102,16 +160,29 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
   const jenjang = getJenjangFromServerCookies() ?? 7;
   const supabase = createClient();
 
-  const { data: mapel } = await supabase
+  const galat: string[] = [];
+  const catatGalat = (label: string, error: { message: string } | null) => {
+    if (error) galat.push(`${label}: ${error.message}`);
+  };
+
+  const { data: mapel, error: errMapel } = await supabase
     .from("mapel")
     .select("id, nama, event(nama, tgl_mulai)")
     .eq("id", mapelId)
     .maybeSingle();
+  catatGalat("mapel", errMapel);
 
   if (!mapel) {
     return (
       <div>
-        <p className="text-sm text-ink/50">Mapel tidak ditemukan.</p>
+        {galat.length > 0 ? (
+          <PesanDaftarKosong
+            galat={galat.join(" · ")}
+            jumlahKelasTarget={0}
+          />
+        ) : (
+          <p className="text-sm text-ink/50">Mapel tidak ditemukan.</p>
+        )}
         <Link href="/admin/nilai" className="text-sm text-teal hover:underline">
           ← Pilih mapel lain
         </Link>
@@ -131,11 +202,12 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
     eventInfo?.tgl_mulai ?? new Date().toISOString()
   );
 
-  const { data: soalData } = await supabase
+  const { data: soalData, error: errSoal } = await supabase
     .from("soal")
     .select("id, urutan, skor")
     .eq("mapel_id", mapelId)
     .order("urutan");
+  catatGalat("soal", errSoal);
 
   const soalList: SoalRingkas[] = (soalData ?? []).map((s) => ({
     id: s.id,
@@ -143,31 +215,35 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
     skor: Number(s.skor),
   }));
 
-  const { data: mapelKelas } = await supabase
+  const { data: mapelKelas, error: errMapelKelas } = await supabase
     .from("mapel_kelas")
     .select("kelas_id")
     .eq("mapel_id", mapelId);
+  catatGalat("mapel_kelas", errMapelKelas);
 
   const kelasIds = (mapelKelas ?? []).map((mk) => mk.kelas_id);
 
-  const { data: siswaList } =
+  const { data: siswaList, error: errSiswa } =
     kelasIds.length > 0
       ? await supabase
           .from("siswa")
           .select("id, nama, username, kelas(nama)")
           .in("kelas_id", kelasIds)
           .order("nama")
-      : { data: [] as never[] };
+      : { data: [] as never[], error: null };
+  catatGalat("siswa", errSiswa);
 
-  const { data: jawabanList } = await supabase
+  const { data: jawabanList, error: errJawaban } = await supabase
     .from("jawaban_siswa")
     .select("siswa_id, submitted_at")
     .eq("mapel_id", mapelId);
+  catatGalat("jawaban_siswa", errJawaban);
 
-  const { data: nilaiList } = await supabase
+  const { data: nilaiList, error: errNilai } = await supabase
     .from("nilai")
     .select("siswa_id, total_skor, detail_jsonb, is_override")
     .eq("mapel_id", mapelId);
+  catatGalat("nilai", errNilai);
 
   const submittedMap = new Map(
     (jawabanList ?? []).map((j) => [j.siswa_id, j.submitted_at !== null])
@@ -212,10 +288,18 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
         </p>
       </div>
 
-      {rows.length === 0 ? (
-        <p className="text-sm text-ink/50">
-          Belum ada siswa yang ditarget ke mapel ini.
+      {galat.length > 0 && rows.length > 0 && (
+        <p className="mb-4 rounded-md border border-danger/20 bg-danger/5 px-3 py-2.5 text-xs text-danger">
+          Sebagian data gagal dimuat, jadi angka di bawah bisa belum lengkap:{" "}
+          {galat.join(" · ")}
         </p>
+      )}
+
+      {rows.length === 0 ? (
+        <PesanDaftarKosong
+          galat={galat.length > 0 ? galat.join(" · ") : null}
+          jumlahKelasTarget={kelasIds.length}
+        />
       ) : (
         <NilaiTable
           mapelId={mapelId}
@@ -339,9 +423,13 @@ async function DetailNilaiMapelAdminView({
             buatHref={(j) => `/admin/nilai?jenjang=${j}`}
           />
         </div>
-        <p className="text-sm text-ink/50">
-          Mapel tidak ditemukan di kelas {jenjang}.
-        </p>
+        {detail.galat ? (
+          <PesanDaftarKosong galat={detail.galat} jumlahKelasTarget={0} />
+        ) : (
+          <p className="text-sm text-ink/50">
+            Mapel tidak ditemukan di kelas {jenjang}.
+          </p>
+        )}
         <Link
           href={`/admin/nilai?jenjang=${jenjang}`}
           className="text-sm text-teal hover:underline"
@@ -382,10 +470,18 @@ async function DetailNilaiMapelAdminView({
         </p>
       </div>
 
-      {rows.length === 0 ? (
-        <p className="text-sm text-ink/50">
-          Belum ada siswa yang ditarget ke mapel ini.
+      {detail.galat && rows.length > 0 && (
+        <p className="mb-4 rounded-md border border-danger/20 bg-danger/5 px-3 py-2.5 text-xs text-danger">
+          Sebagian data gagal dimuat, jadi angka di bawah bisa belum lengkap:{" "}
+          {detail.galat}
         </p>
+      )}
+
+      {rows.length === 0 ? (
+        <PesanDaftarKosong
+          galat={detail.galat}
+          jumlahKelasTarget={detail.jumlahKelasTarget}
+        />
       ) : (
         <NilaiTable
           mapelId={mapelId}

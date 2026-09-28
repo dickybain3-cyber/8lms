@@ -10,6 +10,7 @@ import {
   type JenisEvent,
 } from "@/lib/jenis-event";
 import { validasiNilai, parseNilai } from "@/lib/tugas";
+import { datetimeLocalKeIsoWib } from "@/lib/waktu-wib";
 import { BUCKET_TUGAS } from "@/lib/tugas-berkas";
 
 export type ActionState = { error: string | null };
@@ -163,6 +164,16 @@ export async function createTugas(
   const galat = validasiFormTugas(isi);
   if (galat) return { error: galat };
 
+  // Eksplisit WIB (lihat waktu-wib.ts) — dulu `new Date(isi.dibukaAt)`
+  // langsung menafsirkan jam sesuai zona PROSES SERVER (kerap UTC di
+  // produksi), bukan WIB, sehingga tugas yang dibuka "jam 07.00" tersimpan
+  // sebagai jam yang salah 7 jam.
+  const dibukaAtIso = datetimeLocalKeIsoWib(isi.dibukaAt);
+  const tenggatIso = datetimeLocalKeIsoWib(isi.tenggat);
+  if (!dibukaAtIso || !tenggatIso) {
+    return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
+  }
+
   const supabase = createClient();
 
   // Penjaga jenis event, cermin dari trigger
@@ -188,8 +199,8 @@ export async function createTugas(
       event_id: eventId,
       judul: isi.judul,
       deskripsi: isi.deskripsi,
-      dibuka_at: new Date(isi.dibukaAt).toISOString(),
-      tenggat: new Date(isi.tenggat).toISOString(),
+      dibuka_at: dibukaAtIso,
+      tenggat: tenggatIso,
       skor_maksimal: isi.skorMaksimal,
       izinkan_terlambat: isi.izinkanTerlambat,
       minta_teks: isi.mintaTeks,
@@ -240,6 +251,12 @@ export async function updateTugas(
   const galat = validasiFormTugas(isi);
   if (galat) return { error: galat };
 
+  const dibukaAtIso = datetimeLocalKeIsoWib(isi.dibukaAt);
+  const tenggatIso = datetimeLocalKeIsoWib(isi.tenggat);
+  if (!dibukaAtIso || !tenggatIso) {
+    return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
+  }
+
   const supabase = createClient();
 
   const { error } = await supabase
@@ -247,8 +264,8 @@ export async function updateTugas(
     .update({
       judul: isi.judul,
       deskripsi: isi.deskripsi,
-      dibuka_at: new Date(isi.dibukaAt).toISOString(),
-      tenggat: new Date(isi.tenggat).toISOString(),
+      dibuka_at: dibukaAtIso,
+      tenggat: tenggatIso,
       skor_maksimal: isi.skorMaksimal,
       izinkan_terlambat: isi.izinkanTerlambat,
       minta_teks: isi.mintaTeks,

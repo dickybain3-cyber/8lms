@@ -130,6 +130,27 @@ export interface StatistikMapel {
   skor_max: number | null;
 }
 
+/**
+ * Baris hasil RPC `get_analisis_butir_soal(p_mapel_id)` (0012_statistik_lanjutan).
+ * Satu baris per soal. Hanya siswa yang SUDAH submit yang dihitung sebagai
+ * peserta. `kategori` = tingkat kesukaran empiris: >70% benar "mudah",
+ * 30–70% "sedang", <30% "sulit".
+ */
+export interface AnalisisButirSoal {
+  soal_id: string;
+  urutan: number;
+  tipe: TipeSoal | string;
+  skor_maks: number;
+  jumlah_peserta: number;
+  jumlah_benar: number;
+  jumlah_sebagian: number;
+  jumlah_salah: number;
+  jumlah_kosong: number;
+  rata_skor: number;
+  persen_benar: number;
+  kategori: string;
+}
+
 /** Baris hasil RPC `get_distribusi_nilai(p_mapel_id)`. */
 export interface DistribusiNilai {
   rentang: string;

@@ -9,6 +9,8 @@ import { fanOutRpc } from "@/lib/supabase/admin-multi-event";
 import { getSesiGuru } from "@/lib/admin-guard";
 import { JENJANG_LABEL, type Jenjang } from "@/lib/jenjang";
 import DistribusiNilai from "@/components/admin/Statistik/DistribusiNilai";
+import AnalisisButir from "@/components/admin/Statistik/AnalisisButir";
+import { tahunAjaranDariTanggal } from "@/lib/tahun-ajaran";
 import BadgeJenjang from "@/components/admin/BadgeJenjang";
 import type { StatistikMapel } from "@/types";
 
@@ -175,19 +177,24 @@ export default async function StatistikPage() {
                                 </p>
                               </div>
 
-                              {/* Tautan pengolahan nilai cuma relevan untuk
-                                  project yang sedang aktif di sesi ini —
-                                  /admin/nilai membaca lewat cookie jenjang,
-                                  jadi mapel dari jenjang lain akan tampil
-                                  kosong di sana. Daripada memberi tautan
-                                  yang menyesatkan, untuk jenjang lain
-                                  ditampilkan keterangannya saja. */}
-                              {hasil.jenjang === sesi.jenjang ? (
+                              {/* Tautan ke Rekap Penilaian (daftar nilai per kelas +
+                                  unduh Excel). Admin bisa membuka mapel
+                                  jenjang mana pun — /admin/nilai punya
+                                  jalur admin lintas jenjang yang membaca
+                                  `?jenjang=` dari URL. Guru biasa hanya
+                                  jenjangnya sendiri (hasil fan-out untuk
+                                  guru memang cuma berisi jenjang itu). */}
+                              {sesi.isAdmin ||
+                              hasil.jenjang === sesi.jenjang ? (
                                 <Link
-                                  href={`/admin/nilai?mapelId=${m.mapel_id}`}
+                                  href={
+                                    sesi.isAdmin
+                                      ? `/admin/nilai?jenjang=${hasil.jenjang}&mapelId=${m.mapel_id}`
+                                      : `/admin/nilai?mapelId=${m.mapel_id}`
+                                  }
                                   className="text-xs font-bold text-[--primary] hover:underline"
                                 >
-                                  Lihat pengolahan nilai →
+                                  Rekap nilai per kelas &amp; unduh Excel →
                                 </Link>
                               ) : (
                                 <span className="text-[0.7rem] text-slate-400">
@@ -243,6 +250,18 @@ export default async function StatistikPage() {
                               mapelId={m.mapel_id}
                               jenjang={hasil.jenjang}
                             />
+
+                            <div className="mt-3 border-t border-slate-100 pt-3">
+                              <AnalisisButir
+                                mapelId={m.mapel_id}
+                                jenjang={hasil.jenjang}
+                                mapelNama={m.mapel_nama}
+                                eventNama={ev.nama}
+                                tahunAjaran={tahunAjaranDariTanggal(
+                                  m.waktu_mulai
+                                )}
+                              />
+                            </div>
                           </div>
                         );
                       })}

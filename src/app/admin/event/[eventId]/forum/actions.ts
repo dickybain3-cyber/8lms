@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { datetimeLocalKeIsoWib } from "@/lib/waktu-wib";
 import {
   jenisEventValid,
   pakaiMesinForum,
@@ -122,6 +123,14 @@ export async function createForumTopik(
   const galat = validasiFormForum(isi);
   if (galat) return { error: galat };
 
+  // Eksplisit WIB (lihat waktu-wib.ts) — dulu `new Date(isi.dibukaAt)`
+  // langsung menafsirkan jam sesuai zona PROSES SERVER, bukan WIB.
+  const dibukaAtIso = datetimeLocalKeIsoWib(isi.dibukaAt);
+  const ditutupAtIso = datetimeLocalKeIsoWib(isi.ditutupAt);
+  if (!dibukaAtIso || !ditutupAtIso) {
+    return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
+  }
+
   const supabase = createClient();
 
   const jenis = await ambilJenisEvent(supabase, eventId);
@@ -160,8 +169,8 @@ export async function createForumTopik(
     .from("forum_topik")
     .insert({
       event_id: eventId,
-      dibuka_at: new Date(isi.dibukaAt).toISOString(),
-      ditutup_at: new Date(isi.ditutupAt).toISOString(),
+      dibuka_at: dibukaAtIso,
+      ditutup_at: ditutupAtIso,
       created_by: guruId,
     })
     .select("id")
@@ -204,13 +213,19 @@ export async function updateForumTopik(
   const galat = validasiFormForum(isi);
   if (galat) return { error: galat };
 
+  const dibukaAtIso = datetimeLocalKeIsoWib(isi.dibukaAt);
+  const ditutupAtIso = datetimeLocalKeIsoWib(isi.ditutupAt);
+  if (!dibukaAtIso || !ditutupAtIso) {
+    return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
+  }
+
   const supabase = createClient();
 
   const { error } = await supabase
     .from("forum_topik")
     .update({
-      dibuka_at: new Date(isi.dibukaAt).toISOString(),
-      ditutup_at: new Date(isi.ditutupAt).toISOString(),
+      dibuka_at: dibukaAtIso,
+      ditutup_at: ditutupAtIso,
     })
     .eq("id", forumTopikId);
 

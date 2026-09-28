@@ -4,19 +4,12 @@ import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import JadwalMapelFields from "@/components/admin/JadwalMapelFields";
 import { updateMapel, type ActionState } from "../../../../actions";
+import { isoKeDatetimeLocalWib } from "@/lib/waktu-wib";
 
 const initialState: ActionState = { error: null };
 
 const inputCls =
   "w-full rounded-md border border-ink/15 bg-white px-3.5 py-2.5 text-ink placeholder:text-ink/30 outline-none focus:border-gold";
-
-function toLocalInputValue(iso: string) {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
-}
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -103,8 +96,8 @@ export default function MapelEditForm({
       </div>
 
       <JadwalMapelFields
-        defaultMulai={toLocalInputValue(mapel.waktu_mulai)}
-        defaultSelesai={toLocalInputValue(mapel.waktu_selesai)}
+        defaultMulai={isoKeDatetimeLocalWib(mapel.waktu_mulai)}
+        defaultSelesai={isoKeDatetimeLocalWib(mapel.waktu_selesai)}
         defaultDurasi={mapel.durasi_menit ?? null}
       />
 

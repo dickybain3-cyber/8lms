@@ -642,6 +642,15 @@ export interface DetailNilaiMapelAdmin {
   } | null;
   soalList: { id: string; urutan: number; skor: number }[];
   siswaList: BarisNilaiAdmin[];
+  /** Gabungan pesan error dari query-query di bawah; null kalau semuanya
+   *  berhasil. Sebelumnya semua error DIBUANG dan hasil kosong tampil
+   *  sebagai "belum ada siswa yang ditarget" — kegagalan database jadi
+   *  tidak bisa dibedakan dari mapel yang memang belum punya kelas. */
+  galat: string | null;
+  /** Jumlah kelas di `mapel_kelas` untuk mapel ini. 0 = mapel belum
+   *  ditautkan ke kelas mana pun (penyebab daftar siswa kosong yang
+   *  paling umum, dan bisa diperbaiki lewat Edit Mapel). */
+  jumlahKelasTarget: number;
 }
 
 export async function detailNilaiMapelAdmin(
@@ -650,14 +659,26 @@ export async function detailNilaiMapelAdmin(
 ): Promise<DetailNilaiMapelAdmin> {
   const client = createAdminClient(jenjang);
 
-  const { data: mapelRow } = await client
+  const galat: string[] = [];
+  const catatGalat = (label: string, error: { message: string } | null) => {
+    if (error) galat.push(`${label}: ${error.message}`);
+  };
+
+  const { data: mapelRow, error: errMapel } = await client
     .from("mapel")
     .select("id, nama, event(nama, tgl_mulai)")
     .eq("id", mapelId)
     .maybeSingle();
+  catatGalat("mapel", errMapel);
 
   if (!mapelRow) {
-    return { mapel: null, soalList: [], siswaList: [] };
+    return {
+      mapel: null,
+      soalList: [],
+      siswaList: [],
+      galat: galat.length > 0 ? galat.join(" · ") : null,
+      jumlahKelasTarget: 0,
+    };
   }
 
   const eventInfo = mapelRow.event as unknown as {
@@ -666,11 +687,12 @@ export async function detailNilaiMapelAdmin(
   } | null;
   const eventNama = eventInfo?.nama ?? "Event";
 
-  const { data: soalData } = await client
+  const { data: soalData, error: errSoal } = await client
     .from("soal")
     .select("id, urutan, skor")
     .eq("mapel_id", mapelId)
     .order("urutan");
+  catatGalat("soal", errSoal);
 
   const soalList = (soalData ?? []).map((s) => ({
     id: s.id,
@@ -678,31 +700,35 @@ export async function detailNilaiMapelAdmin(
     skor: Number(s.skor),
   }));
 
-  const { data: mapelKelas } = await client
+  const { data: mapelKelas, error: errMapelKelas } = await client
     .from("mapel_kelas")
     .select("kelas_id")
     .eq("mapel_id", mapelId);
+  catatGalat("mapel_kelas", errMapelKelas);
 
   const kelasIds = (mapelKelas ?? []).map((mk) => mk.kelas_id);
 
-  const { data: siswaData } =
+  const { data: siswaData, error: errSiswa } =
     kelasIds.length > 0
       ? await client
           .from("siswa")
           .select("id, nama, username, kelas(nama)")
           .in("kelas_id", kelasIds)
           .order("nama")
-      : { data: [] as never[] };
+      : { data: [] as never[], error: null };
+  catatGalat("siswa", errSiswa);
 
-  const { data: jawabanData } = await client
+  const { data: jawabanData, error: errJawaban } = await client
     .from("jawaban_siswa")
     .select("siswa_id, submitted_at")
     .eq("mapel_id", mapelId);
+  catatGalat("jawaban_siswa", errJawaban);
 
-  const { data: nilaiData } = await client
+  const { data: nilaiData, error: errNilai } = await client
     .from("nilai")
     .select("siswa_id, total_skor, detail_jsonb, is_override")
     .eq("mapel_id", mapelId);
+  catatGalat("nilai", errNilai);
 
   const submittedMap = new Map(
     (jawabanData ?? []).map((j) => [j.siswa_id, j.submitted_at !== null])
@@ -741,6 +767,8 @@ export async function detailNilaiMapelAdmin(
     },
     soalList,
     siswaList,
+    galat: galat.length > 0 ? galat.join(" · ") : null,
+    jumlahKelasTarget: kelasIds.length,
   };
 }
 
