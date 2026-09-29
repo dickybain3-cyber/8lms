@@ -227,11 +227,22 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
     kelasIds.length > 0
       ? await supabase
           .from("siswa")
-          .select("id, nama, username, kelas(nama)")
+          .select("id, nama, username, kelas_id")
           .in("kelas_id", kelasIds)
           .order("nama")
       : { data: [] as never[], error: null };
   catatGalat("siswa", errSiswa);
+
+  // Query terpisah untuk nama kelas — embed `kelas(nama)` ditolak kalau
+  // ada lebih dari satu relasi antara `siswa` dan `kelas`.
+  const { data: kelasData, error: errKelas } =
+    kelasIds.length > 0
+      ? await supabase.from("kelas").select("id, nama").in("id", kelasIds)
+      : { data: [] as never[], error: null };
+  catatGalat("kelas", errKelas);
+  const kelasNamaMap = new Map(
+    (kelasData ?? []).map((k: { id: string; nama: string }) => [k.id, k.nama])
+  );
 
   const { data: jawabanList, error: errJawaban } = await supabase
     .from("jawaban_siswa")
@@ -265,8 +276,7 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
       siswaId: s.id,
       nama: s.nama,
       username: s.username,
-      kelasNama:
-        (s.kelas as unknown as { nama: string } | null)?.nama ?? "-",
+      kelasNama: kelasNamaMap.get(s.kelas_id) ?? "-",
       submitted: submittedMap.get(s.id) ?? false,
       totalSkor: nilai?.totalSkor ?? null,
       isOverride: nilai?.isOverride ?? false,

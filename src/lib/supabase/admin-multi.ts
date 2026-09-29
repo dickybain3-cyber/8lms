@@ -712,11 +712,23 @@ export async function detailNilaiMapelAdmin(
     kelasIds.length > 0
       ? await client
           .from("siswa")
-          .select("id, nama, username, kelas(nama)")
+          .select("id, nama, username, kelas_id")
           .in("kelas_id", kelasIds)
           .order("nama")
       : { data: [] as never[], error: null };
   catatGalat("siswa", errSiswa);
+
+  // Nama kelas diambil lewat query terpisah, BUKAN embed `kelas(nama)`:
+  // kalau ada lebih dari satu foreign key antara `siswa` dan `kelas`,
+  // PostgREST menolak embed dengan "more than one relationship was found".
+  const { data: kelasData, error: errKelas } =
+    kelasIds.length > 0
+      ? await client.from("kelas").select("id, nama").in("id", kelasIds)
+      : { data: [] as never[], error: null };
+  catatGalat("kelas", errKelas);
+  const kelasNamaMap = new Map(
+    (kelasData ?? []).map((k: { id: string; nama: string }) => [k.id, k.nama])
+  );
 
   const { data: jawabanData, error: errJawaban } = await client
     .from("jawaban_siswa")
@@ -750,7 +762,7 @@ export async function detailNilaiMapelAdmin(
       siswaId: s.id,
       nama: s.nama,
       username: s.username,
-      kelasNama: (s.kelas as unknown as { nama: string } | null)?.nama ?? "-",
+      kelasNama: kelasNamaMap.get(s.kelas_id) ?? "-",
       submitted: submittedMap.get(s.id) ?? false,
       totalSkor: nilai?.totalSkor ?? null,
       isOverride: nilai?.isOverride ?? false,

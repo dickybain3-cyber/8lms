@@ -678,16 +678,23 @@ export async function siswaSemuaJenjangUntukDenah(): Promise<
   return untukSemuaJenjang<SiswaLintasJenjang>(async (client, jenjang) => {
     const { data, error } = await client
       .from("siswa")
-      .select("id, nama, username, kelas(nama, tingkat)")
+      .select("id, nama, username, kelas_id")
       .order("nama");
 
     if (error) throw new Error(error.message);
 
+    // Query terpisah: embed `kelas(...)` ditolak PostgREST kalau ada lebih
+    // dari satu relasi antara `siswa` dan `kelas`.
+    const { data: kelasRows, error: errKelas } = await client
+      .from("kelas")
+      .select("id, nama, tingkat");
+    if (errKelas) throw new Error(errKelas.message);
+    const kelasMap = new Map(
+      (kelasRows ?? []).map((k: { id: string; nama: string; tingkat: number }) => [k.id, k])
+    );
+
     return (data ?? []).map((s) => {
-      const kelas = s.kelas as unknown as {
-        nama: string;
-        tingkat: number;
-      } | null;
+      const kelas = kelasMap.get(s.kelas_id as string) ?? null;
       const tingkat = (kelas?.tingkat ?? jenjang) as 7 | 8 | 9;
       return {
         id: s.id as string,

@@ -261,7 +261,7 @@ export default function LoginForm() {
     // sapaan bisa menyebut nama guru dan membedakan Guru dari
     // Administrator. Satu kolom tambahan di query yang memang sudah
     // jalan — bukan permintaan jaringan baru.
-    const { data: guruRow } = await supabase
+    const { data: guruRow, error: errGuru } = await supabase
       .from("guru")
       .select("id, nama, is_admin")
       .eq("auth_id", user.id)
@@ -282,15 +282,30 @@ export default function LoginForm() {
       return;
     }
 
-    const { data: siswaRow } = await supabase
+    const { data: siswaRow, error: errSiswa } = await supabase
       .from("siswa")
-      .select("id, nama, kelas(nama)")
+      .select("id, nama, kelas_id")
       .eq("auth_id", user.id)
       .maybeSingle();
 
     if (siswaRow) {
+      // Nama kelas hanya untuk sapaan — kegagalan di sini (RLS, relasi
+      // ganda, jaringan) TIDAK boleh menggagalkan login.
+      let namaKelasDb: string | undefined;
+      try {
+        if (siswaRow.kelas_id) {
+          const { data: kelasRow } = await supabase
+            .from("kelas")
+            .select("nama")
+            .eq("id", siswaRow.kelas_id)
+            .maybeSingle();
+          namaKelasDb = kelasRow?.nama as string | undefined;
+        }
+      } catch {
+        namaKelasDb = undefined;
+      }
       const kelasSiswa =
-        (siswaRow.kelas as unknown as { nama: string } | null)?.nama ??
+        namaKelasDb ??
         // Cadangan: kelas yang dipilih sendiri di form. Dipakai kalau
         // join ke tabel `kelas` terhalang RLS — sapaan tidak boleh
         // gagal tampil cuma karena kelasnya tidak terbaca.
@@ -311,6 +326,20 @@ export default function LoginForm() {
     // jadi yang bikin halaman lain error aneh-aneh.
     await supabase.auth.signOut();
     clearJenjangCookie();
+    if (errGuru || errSiswa) {
+      // Query GAGAL (bukan "barisnya tidak ada"): tampilkan pesan aslinya
+      // supaya tidak salah dikira akun belum terdaftar.
+      setError(
+        "Login berhasil, tetapi data akun gagal dibaca dari database: " +
+          [
+            errGuru && `guru: ${errGuru.message}`,
+            errSiswa && `siswa: ${errSiswa.message}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+      );
+      return;
+    }
     setError(
       `Email & kata sandi benar, tapi akun ini belum terdaftar sebagai guru maupun siswa di database ${JENJANG_LABEL[jenjang]}. ` +
         "Kalau akunmu dibuat untuk jenjang lain, ganti pilihan jenjang di atas. Kalau memang baru dibuat lewat Authentication, barisnya di tabel guru/siswa masih perlu ditambahkan."

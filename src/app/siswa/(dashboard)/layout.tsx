@@ -22,11 +22,19 @@ export default async function SiswaDashboardLayout({
 
   const { data: siswa } = await supabase
     .from("siswa")
-    .select("nama, kelas(nama)")
+    .select("nama, kelas_id")
     .eq("auth_id", user?.id ?? "")
     .maybeSingle();
 
-  const kelasNama = (siswa?.kelas as unknown as { nama: string } | null)?.nama;
+  // Query terpisah: embed `kelas(nama)` ambigu kalau ada >1 relasi siswa↔kelas.
+  const { data: kelasRow } = siswa?.kelas_id
+    ? await supabase
+        .from("kelas")
+        .select("nama")
+        .eq("id", siswa.kelas_id)
+        .maybeSingle()
+    : { data: null };
+  const kelasNama = kelasRow?.nama as string | undefined;
 
   return (
     <div className="flex min-h-screen flex-col bg-paper">
