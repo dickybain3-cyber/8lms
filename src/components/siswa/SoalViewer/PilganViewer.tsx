@@ -106,7 +106,7 @@ export default function PilganViewer({
                 <label> boleh memuat konten blok, jadi ini aman.
               */}
               <div
-                className="min-w-0 flex-1 text-[15px] leading-relaxed text-ink"
+                className="flex min-w-0 flex-1 gap-2 text-[15px] leading-relaxed text-ink"
                 onClick={(e) => {
                   // Klik di dalam <label> diteruskan ke input-nya. Tanpa
                   // penahan ini, siswa yang mengetuk gambar opsi hanya
@@ -119,16 +119,21 @@ export default function PilganViewer({
                   }
                 }}
               >
-                <span className="mr-1.5 font-bold text-ink/45">
+                {/* Huruf dan isi opsi SEBARIS (dulu isi turun ke baris
+                    baru di bawah huruf): tiap opsi ±30% lebih pendek, jadi
+                    siswa di HP lebih jarang menggulir. */}
+                <span className="w-5 shrink-0 font-bold text-ink/45">
                   {String.fromCharCode(65 + idx)}.
                 </span>
-                <KontenKaya
-                  html={o.teks_html}
-                  teks={o.teks}
-                  kecil
-                  className="inline-block w-full align-top"
-                />
-                {o.gambar_url && <GambarSoal url={o.gambar_url} kecil />}
+                <div className="min-w-0 flex-1">
+                  <KontenKaya
+                    html={o.teks_html}
+                    teks={o.teks}
+                    kecil
+                    className="block w-full"
+                  />
+                  {o.gambar_url && <GambarSoal url={o.gambar_url} kecil />}
+                </div>
               </div>
             </label>
           );

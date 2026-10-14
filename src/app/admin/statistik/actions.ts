@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSesiGuru, pastikanBolehKeJenjang } from "@/lib/admin-guard";
 import { isJenjangValid, type Jenjang } from "@/lib/jenjang";
 import type { AnalisisButirSoal, DistribusiNilai } from "@/types";
+import { muatAnalisisButirMapel } from "@/lib/statistik-kegiatan";
 
 /**
  * Union dibedakan lewat field literal `ok` (bukan lewat `error: string |
@@ -105,41 +106,23 @@ export async function muatAnalisisButir(
   const tidakBoleh = await pastikanBolehKeJenjang(sesi, jenjang);
   if (tidakBoleh) return { ok: false, error: tidakBoleh };
 
-  const klien =
-    jenjang === sesi.jenjang ? createClient() : createAdminClient(jenjang);
-
-  const { data, error } = await klien.rpc("get_analisis_butir_soal", {
-    p_mapel_id: mapelId,
-  });
-
-  if (error) {
-    console.error("[muatAnalisisButir] gagal:", error.message);
-    const fungsiHilang =
-      /could not find the function|does not exist|schema cache/i.test(
-        error.message
-      );
-    return {
-      ok: false,
-      error: fungsiHilang
-        ? `Fungsi analisis butir belum ada di database kelas ${jenjang}. Jalankan migrasi 0012_statistik_lanjutan.sql di project itu.`
-        : "Gagal memuat analisis butir soal. Coba lagi.",
-    };
-  }
-
-  const baris = ((data ?? []) as AnalisisButirSoal[]).map((r) => ({
-    ...r,
-    // Kolom numeric dari Postgres bisa datang sebagai string lewat
-    // PostgREST; dinormalkan di sini supaya UI & Excel tidak perlu
-    // menebak tipenya.
-    skor_maks: Number(r.skor_maks),
-    jumlah_peserta: Number(r.jumlah_peserta),
-    jumlah_benar: Number(r.jumlah_benar),
-    jumlah_sebagian: Number(r.jumlah_sebagian),
-    jumlah_salah: Number(r.jumlah_salah),
-    jumlah_kosong: Number(r.jumlah_kosong),
-    rata_skor: Number(r.rata_skor),
-    persen_benar: Number(r.persen_benar),
+  // Dihitung di aplikasi: fungsi SQL get_analisis_butir_soal (migrasi 0012)
+  // belum terpasang di database mana pun, jadi versi RPC selalu gagal.
+  const hasil = await muatAnalisisButirMapel(jenjang, mapelId);
+  if (typeof hasil === "string") return { ok: false, error: hasil };
+  const baris: AnalisisButirSoal[] = hasil.map((b) => ({
+    soal_id: b.soalId,
+    urutan: b.urutan,
+    tipe: b.tipe,
+    skor_maks: b.skorMaks,
+    jumlah_peserta: b.peserta,
+    jumlah_benar: b.benar,
+    jumlah_sebagian: b.sebagian,
+    jumlah_salah: b.salah,
+    jumlah_kosong: b.kosong,
+    rata_skor: b.rataSkor,
+    persen_benar: b.persenBenar,
+    kategori: b.kategori ?? "belum ada data",
   }));
-
   return { ok: true, data: baris };
 }

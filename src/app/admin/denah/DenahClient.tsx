@@ -224,7 +224,7 @@ export default function DenahClient({
           </div>
         )}
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <KotakAngka label="Kelas 7" nilai={jumlahPerTingkat[7]} />
           <KotakAngka label="Kelas 8" nilai={jumlahPerTingkat[8]} />
           <KotakAngka label="Kelas 9" nilai={jumlahPerTingkat[9]} />

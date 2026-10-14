@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createMiddlewareClient } from "@/lib/supabase/middleware";
+import { jenjangDariPathLogin, pathLogin } from "@/lib/jenjang";
 
 /**
  * Aturan:
@@ -56,12 +57,34 @@ function redirectKe(
 }
 
 export async function middleware(request: NextRequest) {
+  // ── RINGAN UNTUK UJIAN ──
+  // Berkas ini dulu berada di root proyek, padahal aplikasinya di `src/`,
+  // sehingga Next.js TIDAK PERNAH menjalankannya (manifest middleware
+  // kosong). Sekarang aktif, tetapi hanya untuk perpindahan HALAMAN (GET).
+  // Server action (simpan jawaban, kumpulkan ujian) dan API dilewati tanpa
+  // satu kueri pun: ratusan siswa yang menyimpan jawaban serentak tidak
+  // boleh menanggung getUser + 2 kueri peran di setiap simpanan. Halaman
+  // dan action itu sudah memeriksa sesi/hak aksesnya sendiri.
+  if (
+    request.method !== "GET" ||
+    request.headers.has("next-action") ||
+    request.nextUrl.pathname.startsWith("/api/")
+  ) {
+    return NextResponse.next();
+  }
+
   const { supabase, response, jenjang } = createMiddlewareClient(request);
   const path = request.nextUrl.pathname;
 
   const isAdminPath = path.startsWith("/admin");
   const isSiswaPath = path.startsWith("/siswa");
-  const isLoginPath = path === "/login";
+  // /login = pemilih jenjang; /kelas7|8|9 = halaman login yang jenjangnya
+  // sudah terkunci oleh alamatnya.
+  const jenjangPathLogin = jenjangDariPathLogin(path);
+  const isLoginPath = path === "/login" || jenjangPathLogin !== null;
+  // Ke mana orang yang belum/tidak lagi login dikembalikan: halaman login
+  // jenjangnya sendiri bila diketahui, supaya tidak perlu memilih ulang.
+  const halamanLogin = pathLogin(jenjang);
   const isRootPath = path === "/";
 
   // Belum pernah pilih jenjang sama sekali (mis. cookie kadaluarsa saat
@@ -69,7 +92,7 @@ export async function middleware(request: NextRequest) {
   // connect ke project mana, jadi diperlakukan sama seperti "belum login".
   if (!supabase || !jenjang) {
     if (isAdminPath || isSiswaPath) {
-      return redirectKe(request, response, "/login");
+      return redirectKe(request, response, halamanLogin);
     }
     return response;
   }
@@ -80,7 +103,7 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     if (isAdminPath || isSiswaPath) {
-      return redirectKe(request, response, "/login");
+      return redirectKe(request, response, halamanLogin);
     }
     return response;
   }
@@ -118,10 +141,17 @@ export async function middleware(request: NextRequest) {
     // Tidak ada risiko loop: di /login role tetap null, tapi cabang ini
     // hanya memulangkan `response` biasa untuk path /login.
     if (isLoginPath) return response;
-    return redirectKe(request, response, "/login");
+    return redirectKe(request, response, halamanLogin);
   }
 
   const homePath = role === "admin" ? "/admin" : "/siswa";
+
+  // Sudah login di jenjang A lalu membuka /kelasB: tampilkan halaman
+  // login B (halaman itu memberi tahu sesi A akan ditutup), jangan
+  // dilempar ke dashboard A.
+  if (jenjangPathLogin !== null && jenjangPathLogin !== jenjang) {
+    return response;
+  }
 
   if (isLoginPath || isRootPath) {
     return redirectKe(request, response, homePath);

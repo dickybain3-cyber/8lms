@@ -68,15 +68,17 @@ export default function MultiBenarSalahViewer({
                   : "border-gold/40 bg-gold/[0.04]"
               }`}
             >
-              <div className="text-[15px] leading-relaxed text-ink">
-                <span className="mr-1.5 font-bold text-ink/45">{idx + 1}.</span>
-                <KontenKaya
-                  html={p.teks_html}
-                  teks={p.teks}
-                  kecil
-                  className="inline-block w-full align-top"
-                />
-                {p.gambar_url && <GambarSoal url={p.gambar_url} kecil />}
+              <div className="flex gap-2 text-[15px] leading-relaxed text-ink">
+                <span className="w-5 shrink-0 font-bold text-ink/45">{idx + 1}.</span>
+                <div className="min-w-0 flex-1">
+                  <KontenKaya
+                    html={p.teks_html}
+                    teks={p.teks}
+                    kecil
+                    className="block w-full"
+                  />
+                  {p.gambar_url && <GambarSoal url={p.gambar_url} kecil />}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {[

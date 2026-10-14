@@ -8,7 +8,7 @@ import LogoutButton from "@/components/LogoutButton";
 import AvatarGuru from "@/components/AvatarGuru";
 import JenjangSwitcherGlobal from "@/components/admin/JenjangSwitcherGlobal";
 import NavigasiProgress from "@/components/admin/NavigasiProgress";
-import { LOGO_URL, SEKOLAH } from "@/lib/branding";
+import { LOGO_URL_KECIL, SEKOLAH } from "@/lib/branding";
 import { JENJANG_LABEL, type Jenjang } from "@/lib/jenjang";
 
 /**
@@ -174,7 +174,7 @@ export default function AdminShell({
     <div className="min-h-screen bg-paper">
       <NavigasiProgress />
       {/* Topbar khusus layar kecil */}
-      <div className="sticky top-0 z-40 flex h-14 items-center gap-3 bg-ink px-4 shadow-lg lg:hidden">
+      <div className="sticky top-0 z-40 flex h-14 items-center gap-3 bg-ink px-4 shadow-lg print:hidden lg:hidden">
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -206,7 +206,7 @@ export default function AdminShell({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col overflow-y-auto bg-ink shadow-[4px_0_20px_rgba(0,0,0,0.15)] transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex print:hidden w-[260px] flex-col overflow-y-auto bg-ink shadow-[4px_0_20px_rgba(0,0,0,0.15)] transition-transform duration-300 lg:translate-x-0 ${
           drawerOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -221,7 +221,7 @@ export default function AdminShell({
 
         <div className="shrink-0 px-4 py-5 text-center">
           <Image
-            src={LOGO_URL}
+            src={LOGO_URL_KECIL}
             alt={`Logo ${SEKOLAH.nama}`}
             width={50}
             height={50}
@@ -330,8 +330,10 @@ export default function AdminShell({
       </aside>
 
       {/* Isi halaman. `lg:ml-[260px]` mengimbangi sidebar yang fixed. */}
-      <div className="lg:ml-[260px]">
-        <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4 shadow-[0_2px_15px_rgba(0,0,0,0.05)] sm:px-8">
+      <div className="lg:ml-[260px] print:ml-0">
+        {/* Hanya layar lebar: di HP bilah gelap di atas sudah memuat tombol
+            menu dan avatar, jadi header ini dulu hanya memakan ±110 px layar. */}
+        <header className="sticky top-0 z-30 hidden flex-wrap print:!hidden items-center justify-between gap-3 border-b border-slate-200 bg-white px-8 py-4 shadow-[0_2px_15px_rgba(0,0,0,0.05)] lg:flex">
           <div>
             <h1 className="text-[1.05rem] font-semibold text-slate-600">
               Selamat Datang,{" "}
@@ -344,7 +346,6 @@ export default function AdminShell({
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <i className="fas fa-bell text-lg text-[--accent]" aria-hidden />
             {/*
               Foto profil di pojok kanan atas, tempat orang biasanya mencarinya.
               Seluruh blok adalah tautan ke /admin/profil. Teks peran disembunyikan
@@ -382,10 +383,10 @@ export default function AdminShell({
         */}
         {jenjang ? (
           <div
-            className={`bg-gradient-to-r ${WARNA_JENJANG[jenjang]} px-5 py-3.5 text-white shadow-md sm:px-8`}
+            className={`bg-gradient-to-r ${WARNA_JENJANG[jenjang]} px-4 py-2.5 text-white shadow-md print:hidden sm:px-8 sm:py-3.5`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="flex items-center gap-3 font-serif text-lg font-extrabold uppercase tracking-wide sm:text-xl">
+              <p className="flex items-center gap-2 font-serif text-[0.95rem] font-extrabold uppercase tracking-wide sm:gap-3 sm:text-xl">
                 <i className="fas fa-triangle-exclamation text-white/80" aria-hidden />
                 {isAdmin ? "Sesi login" : "Sedang mengelola"}:{" "}
                 {JENJANG_LABEL[jenjang]}
@@ -409,7 +410,7 @@ export default function AdminShell({
             </div>
           </div>
         ) : (
-          <div className="bg-slate-600 px-5 py-3.5 text-white sm:px-8">
+          <div className="bg-slate-600 px-5 py-3.5 text-white print:hidden sm:px-8">
             <p className="font-serif text-lg font-bold uppercase">
               <i className="fas fa-circle-question mr-2" aria-hidden />
               Jenjang aktif tidak diketahui — coba keluar lalu login ulang.
@@ -417,7 +418,7 @@ export default function AdminShell({
           </div>
         )}
 
-        <main className="min-w-0 p-5 sm:p-8">{children}</main>
+        <main className="min-w-0 p-4 sm:p-8 print:p-0">{children}</main>
       </div>
     </div>
   );

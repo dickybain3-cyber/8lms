@@ -12,7 +12,6 @@ import NilaiTable, {
   type BarisNilai,
   type SoalRingkas,
 } from "@/components/admin/Nilai/NilaiTable";
-import JenjangSwitcher from "@/components/admin/JenjangSwitcher";
 import { tahunAjaranDariTanggal } from "@/lib/tahun-ajaran";
 
 function formatWaktu(iso: string) {
@@ -362,16 +361,6 @@ async function MapelPickerAdmin({ jenjangAktif }: { jenjangAktif: Jenjang }) {
 
   return (
     <div>
-      <div className="mb-4">
-        <JenjangSwitcher
-          jenjangAktif={jenjangAktif}
-          // Sengaja MEMBUANG `mapelId` saat pindah jenjang — mapel milik
-          // satu project, tidak valid dipakai untuk project lain. Admin
-          // yang pindah jenjang selalu mendarat di daftar mapel, bukan
-          // mencoba memuat mapel yang sama di database yang salah.
-          buatHref={(j) => `/admin/nilai?jenjang=${j}`}
-        />
-      </div>
 
       <h1 className="mb-1 font-serif text-2xl text-ink">Pengolahan Nilai</h1>
       <p className="mb-6 text-sm text-ink/60">
@@ -427,12 +416,6 @@ async function DetailNilaiMapelAdminView({
   if (!detail.mapel) {
     return (
       <div>
-        <div className="mb-4">
-          <JenjangSwitcher
-            jenjangAktif={jenjang}
-            buatHref={(j) => `/admin/nilai?jenjang=${j}`}
-          />
-        </div>
         {detail.galat ? (
           <PesanDaftarKosong galat={detail.galat} jumlahKelasTarget={0} />
         ) : (
@@ -458,12 +441,6 @@ async function DetailNilaiMapelAdminView({
 
   return (
     <div>
-      <div className="mb-4">
-        <JenjangSwitcher
-          jenjangAktif={jenjang}
-          buatHref={(j) => `/admin/nilai?jenjang=${j}`}
-        />
-      </div>
       <div className="mb-1">
         <Link
           href={`/admin/nilai?jenjang=${jenjang}`}

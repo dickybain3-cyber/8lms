@@ -23,6 +23,12 @@ export const SEKOLAH = {
 export const LOGO_URL =
   "https://res.cloudinary.com/dugvpuniy/image/upload/v1776474064/logosmp8-png_1_hrq8fu.png";
 
+/** Logo yang sudah diperkecil di Cloudinary (±10 KB, bukan 84 KB) untuk
+ *  tampilan kecil seperti halaman login — penting untuk HP dengan kuota/
+ *  sinyal terbatas. */
+export const LOGO_URL_KECIL =
+  "https://res.cloudinary.com/dugvpuniy/image/upload/f_auto,q_auto,w_160/v1776474064/logosmp8-png_1_hrq8fu.png";
+
 /** Foto gedung sekolah — latar halaman login. */
 export const BG_LOGIN_URL =
   "https://res.cloudinary.com/dugvpuniy/image/upload/v1776474151/smpn8prob_t0nmah.jpg";

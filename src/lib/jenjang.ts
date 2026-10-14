@@ -86,3 +86,26 @@ export const JENJANG_LABEL: Record<Jenjang, string> = {
   8: "Kelas 8",
   9: "Kelas 9",
 };
+
+/**
+ * Alamat login per jenjang: /kelas7, /kelas8, /kelas9. Jenjang ditentukan
+ * oleh ALAMAT yang dibuka, bukan dropdown, supaya siswa tidak bisa salah
+ * pilih dan masuk ke database jenjang lain. /login tinggal halaman pemilih
+ * (untuk tautan lama).
+ */
+export const JENJANG_LOGIN_PATH: Record<Jenjang, string> = {
+  7: "/kelas7",
+  8: "/kelas8",
+  9: "/kelas9",
+};
+
+/** "/kelas8" -> 8; selain tiga alamat itu -> null. */
+export function jenjangDariPathLogin(pathname: string): Jenjang | null {
+  const m = /^\/kelas([789])\/?$/.exec(pathname);
+  return m ? (Number(m[1]) as Jenjang) : null;
+}
+
+/** Halaman login untuk jenjang tertentu, atau pemilih jenjang bila tidak diketahui. */
+export function pathLogin(jenjang: Jenjang | null | undefined): string {
+  return jenjang ? JENJANG_LOGIN_PATH[jenjang] : "/login";
+}

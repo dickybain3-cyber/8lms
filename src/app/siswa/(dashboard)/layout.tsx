@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/LogoutButton";
-import { LOGO_URL, SEKOLAH } from "@/lib/branding";
+import { LOGO_URL_KECIL, SEKOLAH } from "@/lib/branding";
 
 /**
  * Chrome dashboard siswa, mengikuti desain acuan: header putih sticky
@@ -38,42 +38,40 @@ export default async function SiswaDashboardLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-paper">
-      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-3.5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] sm:px-8">
-        <div className="flex items-center gap-3">
+      {/* Satu baris di HP 360 px: logo + identitas siswa + tombol keluar.
+          Dulu header terlipat jadi dua baris dan memakan ±130 px layar. */}
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+        <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-2.5 sm:px-6">
           <Image
-            src={LOGO_URL}
+            src={LOGO_URL_KECIL}
             alt={`Logo ${SEKOLAH.nama}`}
-            width={50}
-            height={50}
-            className="h-[50px] w-auto object-contain"
+            width={40}
+            height={40}
+            className="h-10 w-auto shrink-0 object-contain"
           />
-          <div className="flex flex-col leading-tight">
-            <span className="font-serif text-[1.05rem] font-extrabold tracking-wide text-ink">
+          <div className="hidden min-w-0 flex-col leading-tight sm:flex">
+            <span className="font-serif text-[1rem] font-bold tracking-wide text-ink">
               LMS {SEKOLAH.nama}
             </span>
-            <span className="text-[0.7rem] font-bold tracking-[0.1em] text-[--primary]">
+            <span className="text-[0.68rem] font-bold tracking-[0.1em] text-[--primary]">
               {SEKOLAH.kota}
             </span>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-paper px-5 py-2">
-            <div className="flex flex-col text-right leading-tight">
-              <span className="text-sm font-bold text-ink">
-                {siswa?.nama ?? "Siswa"}
-              </span>
-              <span className="text-[0.72rem] font-semibold text-slate-500">
-                {kelasNama ? `Kelas ${kelasNama}` : "—"}
-              </span>
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2.5 rounded-full border border-slate-200 bg-paper py-1.5 pl-4 pr-3">
+              <div className="flex min-w-0 flex-col text-right leading-tight">
+                <span className="truncate text-sm font-bold text-ink">
+                  {siswa?.nama ?? "Siswa"}
+                </span>
+                <span className="text-[0.72rem] font-semibold text-slate-500">
+                  {kelasNama ? `Kelas ${kelasNama}` : "—"}
+                </span>
+              </div>
+              <i className="fas fa-user-graduate shrink-0 text-base text-[--success]" aria-hidden />
             </div>
-            <i
-              className="fas fa-user-graduate text-lg text-[--success]"
-              aria-hidden
-            />
+            <LogoutButton ringkas />
           </div>
-
-          <LogoutButton />
         </div>
       </header>
 
@@ -85,7 +83,7 @@ export default async function SiswaDashboardLayout({
         <div className="flex flex-col items-center gap-2">
           <div className="flex items-center gap-2.5">
             <Image
-              src={LOGO_URL}
+              src={LOGO_URL_KECIL}
               alt=""
               width={24}
               height={24}

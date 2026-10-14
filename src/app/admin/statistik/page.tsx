@@ -1,55 +1,76 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { type HasilJenjang } from "@/lib/supabase/admin-multi";
-// `fanOutRpc` TIDAK pernah ada di admin-multi.ts — impor lama di sini
-// membuat `next build` gagal untuk seluruh aplikasi, bukan cuma halaman
-// ini. Fungsinya sekarang ada di admin-multi-event.ts; penjelasan lengkap
-// ada di komentar fungsinya sendiri.
+// `fanOutRpc` ada di admin-multi-event.ts, BUKAN admin-multi.ts.
 import { fanOutRpc } from "@/lib/supabase/admin-multi-event";
 import { getSesiGuru } from "@/lib/admin-guard";
 import { JENJANG_LABEL, type Jenjang } from "@/lib/jenjang";
-import DistribusiNilai from "@/components/admin/Statistik/DistribusiNilai";
-import AnalisisButir from "@/components/admin/Statistik/AnalisisButir";
-import { tahunAjaranDariTanggal } from "@/lib/tahun-ajaran";
+import { bulat1 } from "@/lib/statistik";
 import BadgeJenjang from "@/components/admin/BadgeJenjang";
+import { GrafikBatangMendatar, KartuNilai, fmt } from "@/components/admin/Statistik/Grafik";
+import TombolUnduhPdf from "@/components/admin/Statistik/TombolUnduhPdf";
 import type { StatistikMapel } from "@/types";
 
-function formatWaktu(iso: string) {
-  return new Date(iso).toLocaleString("id-ID", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+export const dynamic = "force-dynamic";
+
+/** Skor mentah -> skala 0–100 terhadap skor maksimal mapel. */
+function ke100(n: number | null, maks: number): number | null {
+  if (n === null || !(maks > 0)) return null;
+  return bulat1(Math.min(100, Math.max(0, (Number(n) / maks) * 100)));
 }
 
-function fmtSkor(n: number | null) {
-  if (n === null) return "—";
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+interface RingkasKegiatan {
+  id: string;
+  nama: string;
+  mulai: string;
+  mapel: { id: string; nama: string; rata: number | null; submit: number; target: number }[];
+  rata: number | null;
+  tertinggi: number | null;
+  terendah: number | null;
+  submit: number;
+  target: number;
+}
+
+/** Gabungkan baris per-mapel dari RPC menjadi ringkasan per kegiatan. */
+function kelompokkan(baris: StatistikMapel[]): RingkasKegiatan[] {
+  const peta = new Map<string, RingkasKegiatan>();
+  for (const m of baris) {
+    const maks = Number(m.skor_maksimal);
+    if (!peta.has(m.event_id)) {
+      peta.set(m.event_id, { id: m.event_id, nama: m.event_nama, mulai: m.waktu_mulai, mapel: [], rata: null, tertinggi: null, terendah: null, submit: 0, target: 0 });
+    }
+    const k = peta.get(m.event_id)!;
+    const rata = ke100(m.rata_rata, maks);
+    const tinggi = ke100(m.skor_max, maks);
+    const rendah = ke100(m.skor_min, maks);
+    k.mapel.push({ id: m.mapel_id, nama: m.mapel_nama, rata, submit: Number(m.jumlah_submit), target: Number(m.jumlah_target) });
+    k.submit += Number(m.jumlah_submit);
+    k.target += Number(m.jumlah_target);
+    if (tinggi !== null) k.tertinggi = k.tertinggi === null ? tinggi : Math.max(k.tertinggi, tinggi);
+    if (rendah !== null) k.terendah = k.terendah === null ? rendah : Math.min(k.terendah, rendah);
+    if (m.waktu_mulai < k.mulai) k.mulai = m.waktu_mulai;
+  }
+  for (const k of peta.values()) {
+    // Rata-rata kegiatan = rata-rata mapel ditimbang jumlah pengumpul.
+    const bobot = k.mapel.filter((m) => m.rata !== null && m.submit > 0);
+    const total = bobot.reduce((a, m) => a + m.submit, 0);
+    k.rata = total ? bulat1(bobot.reduce((a, m) => a + m.rata! * m.submit, 0) / total) : null;
+  }
+  return Array.from(peta.values()).sort((a, b) => b.mulai.localeCompare(a.mulai));
 }
 
 /**
- * Halaman ini punya DUA mode, ditentukan dari `guru.is_admin`:
- *
- *  - admin  -> data ketiga project ditarik paralel lewat service_role
- *              (fan-out), dikelompokkan per jenjang lalu per kegiatan.
- *  - guru   -> persis seperti sebelumnya: satu project saja, lewat RLS,
- *              tanpa service_role sama sekali.
- *
- * Yang membedakan cuma DARI MANA barisnya datang; bentuk datanya sama,
- * jadi sisa halaman punya satu jalur render saja. Guru yang belum
- * dijadikan admin tidak kehilangan apa pun — dia cuma melihat satu grup
- * jenjang, yaitu jenjangnya sendiri.
+ * Ringkasan statistik semua kegiatan. Admin: ketiga database sekaligus
+ * (fan-out service role); guru: jenjangnya sendiri lewat RLS. Tiap kegiatan
+ * tampil sebagai kartu "nilai keseluruhan" + grafik rata-rata per mapel,
+ * dengan tautan ke statistik lengkap (grafik, per kelas, analisis butir).
  */
 export default async function StatistikPage() {
   const sesi = await getSesiGuru();
 
   let hasilPerJenjang: HasilJenjang<StatistikMapel>[];
-
   if (sesi.isAdmin) {
-    hasilPerJenjang = await fanOutRpc<StatistikMapel>(
-      "get_statistik_mapel_admin"
-    );
+    hasilPerJenjang = await fanOutRpc<StatistikMapel>("get_statistik_mapel_admin");
   } else {
     const supabase = createClient();
     const { data, error } = await supabase.rpc("get_statistik_mapel");
@@ -62,239 +83,93 @@ export default async function StatistikPage() {
     ];
   }
 
-  const errors = hasilPerJenjang.filter((h) => h.error).map((h) => h.error!);
+  const errors = hasilPerJenjang.filter((h) => h.error).map((h) => `${JENJANG_LABEL[h.jenjang]}: ${h.error}`);
   const adaIsi = hasilPerJenjang.some((h) => h.data.length > 0);
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-7">
-        <h1 className="flex items-center gap-2.5 font-serif text-[1.5rem] font-bold text-ink">
-          <i className="fas fa-chart-pie text-[--primary]" aria-hidden />
-          Analisis &amp; Statistik
-        </h1>
-        <p className="mt-1 text-[0.9rem] text-slate-500">
-          {sesi.isAdmin ? (
-            <>
-              Ringkasan pengerjaan &amp; nilai dari{" "}
-              <b>ketiga database (kelas 7, 8, dan 9)</b> sekaligus.
-            </>
-          ) : (
-            <>
-              Ringkasan pengerjaan &amp; nilai per mapel untuk{" "}
-              {sesi.jenjang ? JENJANG_LABEL[sesi.jenjang] : "jenjang ini"}.
-            </>
-          )}
-        </p>
-      </div>
+      <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2.5 font-serif text-[1.5rem] font-bold text-ink">
+            <i className="fas fa-chart-pie text-[--primary] print:hidden" aria-hidden />
+            Statistik Nilai
+          </h1>
+          <p className="mt-1 text-[0.9rem] text-slate-500">
+            {sesi.isAdmin
+              ? "Nilai keseluruhan per kegiatan dari ketiga database (kelas 7, 8, dan 9)."
+              : `Nilai keseluruhan per kegiatan — ${sesi.jenjang ? JENJANG_LABEL[sesi.jenjang] : "jenjang ini"}.`}{" "}
+            Semua nilai dalam skala 0–100.
+          </p>
+        </div>
+        {adaIsi && <TombolUnduhPdf namaBerkas="Statistik Nilai Semua Kegiatan" />}
+      </header>
 
       {errors.length > 0 && (
         <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <i className="fas fa-triangle-exclamation mr-2" aria-hidden />
-          Sebagian data tidak bisa dimuat: {errors.join(" ")} Data jenjang lain
-          di bawah tetap ditampilkan apa adanya.
+          Sebagian data tidak bisa dimuat: {errors.join(" · ")}
         </div>
       )}
 
       {!adaIsi && errors.length === 0 && (
         <div className="card-mewah px-5 py-14 text-center">
-          <i
-            className="fas fa-chart-simple mb-4 block text-4xl text-slate-300"
-            aria-hidden
-          />
-          <p className="text-slate-500">
-            Belum ada mapel untuk ditampilkan statistiknya.
-          </p>
+          <i className="fas fa-chart-simple mb-4 block text-4xl text-slate-300" aria-hidden />
+          <p className="text-slate-500">Belum ada mapel untuk ditampilkan statistiknya.</p>
         </div>
       )}
 
       <div className="space-y-10">
         {hasilPerJenjang.map((hasil) => {
           if (hasil.data.length === 0) return null;
-
-          // Kelompokkan per kegiatan DI DALAM jenjang. Dua project berbeda
-          // bisa saja punya kegiatan bernama sama ("PAT 2026") dengan id
-          // yang beda — karena itu pengelompokan tidak boleh mencampur
-          // ketiganya jadi satu peta berdasarkan event_id saja.
-          const events = new Map<
-            string,
-            { nama: string; mapel: StatistikMapel[] }
-          >();
-          for (const row of hasil.data) {
-            if (!events.has(row.event_id)) {
-              events.set(row.event_id, { nama: row.event_nama, mapel: [] });
-            }
-            events.get(row.event_id)!.mapel.push(row);
-          }
-
+          const kegiatan = kelompokkan(hasil.data);
           return (
             <section key={hasil.jenjang}>
               <div className="mb-4 flex items-center gap-3 border-b-2 border-slate-200 pb-2.5">
                 <BadgeJenjang jenjang={hasil.jenjang} ukuran="besar" />
-                <span className="text-[0.78rem] font-medium text-slate-400">
-                  {hasil.data.length} mapel
-                </span>
+                <span className="text-[0.78rem] font-medium text-slate-500">{kegiatan.length} kegiatan</span>
               </div>
 
-              <div className="space-y-7">
-                {Array.from(events.entries()).map(([eventId, ev]) => (
-                  <div key={eventId}>
-                    <h2 className="mb-3.5 border-l-4 border-[--primary] pl-3 font-serif text-[1.1rem] font-bold text-ink">
-                      {ev.nama}
-                    </h2>
+              <div className="space-y-5">
+                {kegiatan.map((k) => {
+                  const persen = k.target ? Math.round((k.submit / k.target) * 100) : 0;
+                  return (
+                    <article key={k.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:break-inside-avoid sm:p-5">
+                      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <h2 className="font-serif text-[1.1rem] font-bold leading-snug text-ink">{k.nama}</h2>
+                          <p className="text-[0.78rem] text-slate-500">
+                            {k.mapel.length} mapel · mulai{" "}
+                            {new Date(k.mulai).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/admin/statistik/kegiatan?jenjang=${hasil.jenjang}&event=${k.id}`}
+                          className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 self-start rounded-xl border border-slate-200 px-3.5 text-sm font-semibold text-[--primary] transition-colors hover:border-[--accent] hover:bg-blue-50 print:hidden"
+                        >
+                          Statistik lengkap
+                          <i className="fas fa-arrow-right text-xs" aria-hidden />
+                        </Link>
+                      </div>
 
-                    <div className="space-y-4">
-                      {ev.mapel.map((m) => {
-                        const persenSubmit =
-                          m.jumlah_target > 0
-                            ? Math.round(
-                                (m.jumlah_submit / m.jumlah_target) * 100
-                              )
-                            : 0;
+                      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <KartuNilai label="Rata-rata keseluruhan" nilai={fmt(k.rata)} aksen="border-l-violet-500" />
+                        <KartuNilai label="Tertinggi" nilai={fmt(k.tertinggi)} aksen="border-l-emerald-500" />
+                        <KartuNilai label="Terendah" nilai={fmt(k.terendah)} aksen="border-l-red-400" />
+                        <KartuNilai label="Pengumpulan" nilai={`${persen}%`} sub={`${k.submit} / ${k.target} lembar`} aksen="border-l-blue-500" />
+                      </div>
 
-                        return (
-                          <div key={m.mapel_id} className="card-mewah p-5">
-                            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <h3 className="font-serif text-[1.05rem] font-bold text-ink">
-                                    {m.mapel_nama}
-                                  </h3>
-                                  {/* Badge diulang di level baris, tidak
-                                      cuma di judul grup: begitu daftarnya
-                                      panjang dan halaman di-scroll, judul
-                                      jenjang sudah keluar layar padahal
-                                      tombol aksinya ada di sini. */}
-                                  <BadgeJenjang jenjang={hasil.jenjang} />
-                                </div>
-                                <p className="mt-0.5 text-[0.78rem] text-slate-500">
-                                  <i
-                                    className="fas fa-clock mr-1.5 text-slate-400"
-                                    aria-hidden
-                                  />
-                                  {formatWaktu(m.waktu_mulai)} –{" "}
-                                  {formatWaktu(m.waktu_selesai)} · skor maksimal{" "}
-                                  {fmtSkor(m.skor_maksimal)}
-                                </p>
-                              </div>
-
-                              {/* Tautan ke Rekap Penilaian (daftar nilai per kelas +
-                                  unduh Excel). Admin bisa membuka mapel
-                                  jenjang mana pun — /admin/nilai punya
-                                  jalur admin lintas jenjang yang membaca
-                                  `?jenjang=` dari URL. Guru biasa hanya
-                                  jenjangnya sendiri (hasil fan-out untuk
-                                  guru memang cuma berisi jenjang itu). */}
-                              {sesi.isAdmin ||
-                              hasil.jenjang === sesi.jenjang ? (
-                                <Link
-                                  href={
-                                    sesi.isAdmin
-                                      ? `/admin/nilai?jenjang=${hasil.jenjang}&mapelId=${m.mapel_id}`
-                                      : `/admin/nilai?mapelId=${m.mapel_id}`
-                                  }
-                                  className="text-xs font-bold text-[--primary] hover:underline"
-                                >
-                                  Rekap nilai per kelas &amp; unduh Excel →
-                                </Link>
-                              ) : (
-                                <span className="text-[0.7rem] text-slate-400">
-                                  Untuk mengolah nilainya, login di{" "}
-                                  {JENJANG_LABEL[hasil.jenjang]}
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                              <Tile
-                                label="Submit"
-                                warna="border-l-[--primary]"
-                                nilai={
-                                  <>
-                                    {m.jumlah_submit}
-                                    <span className="text-sm text-slate-400">
-                                      {" "}
-                                      / {m.jumlah_target}
-                                    </span>
-                                  </>
-                                }
-                              />
-                              <Tile
-                                label="Rata-rata"
-                                warna="border-l-[#8b5cf6]"
-                                nilai={fmtSkor(m.rata_rata)}
-                              />
-                              <Tile
-                                label="Terendah"
-                                warna="border-l-[--danger]"
-                                nilai={fmtSkor(m.skor_min)}
-                              />
-                              <Tile
-                                label="Tertinggi"
-                                warna="border-l-[--success]"
-                                nilai={fmtSkor(m.skor_max)}
-                              />
-                            </div>
-
-                            <div className="mb-1 flex items-center justify-between text-[0.72rem] font-semibold text-slate-500">
-                              <span>Progres pengumpulan</span>
-                              <span>{persenSubmit}%</span>
-                            </div>
-                            <div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-100">
-                              <div
-                                className="h-full rounded-full bg-gradient-to-r from-[#3b82f6] to-[#60a5fa] transition-[width] duration-500"
-                                style={{ width: `${persenSubmit}%` }}
-                              />
-                            </div>
-
-                            <DistribusiNilai
-                              mapelId={m.mapel_id}
-                              jenjang={hasil.jenjang}
-                            />
-
-                            <div className="mt-3 border-t border-slate-100 pt-3">
-                              <AnalisisButir
-                                mapelId={m.mapel_id}
-                                jenjang={hasil.jenjang}
-                                mapelNama={m.mapel_nama}
-                                eventNama={ev.nama}
-                                tahunAjaran={tahunAjaranDariTanggal(
-                                  m.waktu_mulai
-                                )}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+                      <p className="mb-2 text-[0.72rem] font-bold uppercase tracking-wide text-slate-500">Rata-rata per mapel</p>
+                      <GrafikBatangMendatar
+                        baris={k.mapel.map((m) => ({ label: m.nama, nilai: m.rata, catatan: `${m.submit}/${m.target}` }))}
+                      />
+                    </article>
+                  );
+                })}
               </div>
             </section>
           );
         })}
       </div>
-    </div>
-  );
-}
-
-/** Kotak angka ringkas — sama bentuknya dengan kartu ringkasan di desain acuan. */
-function Tile({
-  label,
-  nilai,
-  warna,
-}: {
-  label: string;
-  nilai: React.ReactNode;
-  warna: string;
-}) {
-  return (
-    <div className={`rounded-xl border-l-4 bg-paper px-4 py-3 ${warna}`}>
-      <p className="text-[0.68rem] font-bold uppercase tracking-wide text-slate-500">
-        {label}
-      </p>
-      <p className="mt-1 font-serif text-[1.4rem] font-extrabold text-ink">
-        {nilai}
-      </p>
     </div>
   );
 }

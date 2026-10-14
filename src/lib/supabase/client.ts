@@ -25,6 +25,20 @@ export function createClient(jenjangOverride?: Jenjang) {
     );
   }
 
-  const { url, anonKey } = getSupabaseConfig(jenjang);
-  return createBrowserClient(url, anonKey);
+  // `createBrowserClient` (@supabase/ssr) di browser secara bawaan adalah
+  // SINGLETON: klien pertama dipakai ulang untuk SEMUA panggilan berikutnya,
+  // apa pun URL-nya. Akibatnya dulu: login ke kelas 8 setelah sebelumnya
+  // menyentuh kelas 7 (ganti pilihan, atau keluar lalu masuk lagi tanpa
+  // muat ulang halaman) diam-diam tetap memakai database kelas 7.
+  // Sekarang satu klien per jenjang, disimpan sendiri.
+  let klien = klienPerJenjang.get(jenjang);
+  if (!klien) {
+    const { url, anonKey } = getSupabaseConfig(jenjang);
+    klien = createBrowserClient(url, anonKey, { isSingleton: false });
+    // Hanya di browser: di server modul ini dipakai bersama semua pengguna.
+    if (typeof window !== "undefined") klienPerJenjang.set(jenjang, klien);
+  }
+  return klien;
 }
+
+const klienPerJenjang = new Map<Jenjang, ReturnType<typeof createBrowserClient>>();

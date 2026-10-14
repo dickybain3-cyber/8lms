@@ -119,12 +119,14 @@ export function Statistik({
     <div
       className={`flex items-center gap-3 rounded-xl border bg-gradient-to-br px-4 py-3 ${skema}`}
     >
-      <i className={`fas ${ikon} text-lg`} aria-hidden />
+      <i className={`fas ${ikon} shrink-0 text-lg`} aria-hidden />
       <div className="min-w-0">
         <p className="text-lg font-bold leading-none tabular-nums text-ink">
           {nilai}
         </p>
-        <p className="mt-1 truncate text-[0.72rem] font-medium uppercase tracking-wide text-slate-500">
+        {/* Boleh dua baris: di HP 360 px label seperti "Kelas terlibat" dulu
+            terpotong jadi "KELAS TERLI…". */}
+        <p className="mt-1 break-words text-[0.7rem] font-medium uppercase leading-snug tracking-wide text-slate-500">
           {label}
         </p>
         {catatan && (

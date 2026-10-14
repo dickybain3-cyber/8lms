@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getJenjangFromServerCookies } from "@/lib/jenjang-server";
 import type { Jenjang } from "@/lib/jenjang";
@@ -37,7 +38,13 @@ export interface SesiGuru {
   fotoUrl: string | null;
 }
 
-export async function getSesiGuru(): Promise<SesiGuru> {
+/**
+ * Dibungkus `cache()`: layout admin DAN halamannya sama-sama memanggil ini;
+ * tanpa cache, getUser + kueri guru berjalan dua kali per halaman.
+ */
+export const getSesiGuru = cache(muatSesiGuru);
+
+async function muatSesiGuru(): Promise<SesiGuru> {
   const jenjang = getJenjangFromServerCookies();
 
   // Tanpa cookie jenjang, `createClient()` memang sengaja melempar error

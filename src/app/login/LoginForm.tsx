@@ -6,9 +6,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { emailGuruDariUsername } from "@/lib/akun";
 import {
-  JENJANG_LIST,
   JENJANG_LABEL,
   clearJenjangCookie,
+  getJenjangFromDocumentCookie,
   setJenjangCookie,
   type Jenjang,
 } from "@/lib/jenjang";
@@ -116,7 +116,12 @@ function tanggalHariIniLabel(): string {
   return `${tanggal} ${bulan} ${tahun}`;
 }
 
-export default function LoginForm() {
+/**
+ * Jenjang TIDAK lagi dipilih di form: ditentukan oleh alamat halaman
+ * (/kelas7, /kelas8, /kelas9) dan dioper sebagai prop. Satu alamat = satu
+ * database, jadi siswa tidak mungkin salah pilih kelas utama.
+ */
+export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("siswa");
   const [loading, setLoading] = useState(false);
@@ -139,7 +144,6 @@ export default function LoginForm() {
   const [tujuan, setTujuan] = useState<string | null>(null);
 
   // --- Tab Admin/Guru ---
-  const [jenjangAdmin, setJenjangAdmin] = useState<"" | Jenjang>("");
   // Diisi NIP (paling umum) atau, untuk akun lama yang belum punya NIP
   // di database (lihat migrasi 0015), email asli — dibedakan di
   // `handleSubmitAdmin` lewat ada-tidaknya "@". Nama variabelnya sengaja
@@ -150,7 +154,6 @@ export default function LoginForm() {
   const [lihatPassword, setLihatPassword] = useState(false);
 
   // --- Tab Siswa ---
-  const [jenjangSiswa, setJenjangSiswa] = useState<"" | Jenjang>("");
   const [kelasNama, setKelasNama] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [daftarSiswa, setDaftarSiswa] = useState<SiswaPilihan[] | null>(null);
@@ -162,20 +165,25 @@ export default function LoginForm() {
   const [tglBulan, setTglBulan] = useState("");
   const [tglTahun, setTglTahun] = useState("");
 
-  const daftarKelas = jenjangSiswa ? KELAS_PER_JENJANG[jenjangSiswa] : [];
+  const daftarKelas = KELAS_PER_JENJANG[jenjang];
 
-  function handleJenjangSiswaChange(value: string) {
-    const j = value ? (Number(value) as Jenjang) : "";
-    setJenjangSiswa(j);
-    // Ganti jenjang berarti ganti database — pilihan kelas/nama
-    // sebelumnya berasal dari project lain dan sudah tidak berlaku.
-    setKelasNama("");
-    setDaftarSiswa(null);
-    setSiswaTerpilih(null);
-    setTglTanggal("");
-    setTglBulan("");
-    setTglTahun("");
-    setError(null);
+  /**
+   * Dipanggil tepat sebelum signInWithPassword. Kalau browser ini masih
+   * memegang sesi jenjang LAIN (mis. komputer lab yang tadi dipakai kelas
+   * 7, sekarang dibuka di /kelas8), sesi lama ditutup dulu di project-nya
+   * sendiri, baru penanda jenjang diganti. Dengan begitu tidak pernah ada
+   * dua sesi yang bisa tertukar.
+   */
+  async function siapkanJenjang() {
+    const lama = getJenjangFromDocumentCookie();
+    if (lama && lama !== jenjang) {
+      try {
+        await createClient(lama).auth.signOut();
+      } catch {
+        // Sesi lama mungkin sudah kedaluwarsa — tidak menghalangi login baru.
+      }
+    }
+    setJenjangCookie(jenjang);
   }
 
   function handleKelasChange(value: string) {
@@ -189,17 +197,15 @@ export default function LoginForm() {
   }
 
   async function bukaModalPilihNama() {
-    if (!jenjangSiswa || !kelasNama) return;
+    if (!kelasNama) return;
     setModalOpen(true);
     setCariNama("");
     setLoadingDaftar(true);
     setErrorDaftar(null);
     try {
-      // Set cookie jenjang dulu, lalu override eksplisit ke createClient
-      // supaya tidak bergantung timing baca-ulang cookie di render yang
-      // sama — pola sama seperti submit login di bawah (lihat client.ts).
-      setJenjangCookie(jenjangSiswa);
-      const supabase = createClient(jenjangSiswa);
+      // Klien jenjang halaman ini secara eksplisit; cookie belum diubah
+      // (baru diubah saat benar-benar masuk, lihat siapkanJenjang).
+      const supabase = createClient(jenjang);
       const { data, error: rpcError } = await supabase.rpc(
         "get_siswa_untuk_pilih_nama",
         { p_kelas_nama: kelasNama }
@@ -342,7 +348,7 @@ export default function LoginForm() {
     }
     setError(
       `Email & kata sandi benar, tapi akun ini belum terdaftar sebagai guru maupun siswa di database ${JENJANG_LABEL[jenjang]}. ` +
-        "Kalau akunmu dibuat untuk jenjang lain, ganti pilihan jenjang di atas. Kalau memang baru dibuat lewat Authentication, barisnya di tabel guru/siswa masih perlu ditambahkan."
+        "Kalau akunmu dibuat untuk jenjang lain, buka halaman login kelas yang sesuai (/kelas7, /kelas8, atau /kelas9). Kalau memang baru dibuat lewat Authentication, barisnya di tabel guru/siswa masih perlu ditambahkan."
     );
   }
 
@@ -350,15 +356,10 @@ export default function LoginForm() {
     e.preventDefault();
     setError(null);
 
-    if (!jenjangAdmin) {
-      setError("Pilih jenjang kelas dulu.");
-      return;
-    }
-
     setLoading(true);
-    setTahap("Menghubungi server kelas " + jenjangAdmin + "…");
-    setJenjangCookie(jenjangAdmin);
-    const supabase = createClient(jenjangAdmin);
+    setTahap("Menghubungi server kelas " + jenjang + "…");
+    await siapkanJenjang();
+    const supabase = createClient(jenjang);
 
     /**
      * Username/NIP -> email sintetis lewat rumus yang SAMA dipakai
@@ -383,12 +384,12 @@ export default function LoginForm() {
       setLoading(false);
       setTahap("");
       setError(
-        "Username/NIP atau kata sandi salah — atau jenjang yang dipilih tidak sesuai dengan project akun ini."
+        `Username/NIP atau kata sandi salah — atau akun ini bukan akun ${JENJANG_LABEL[jenjang]}.`
       );
       return;
     }
 
-    await lanjutkanSetelahLogin(supabase, jenjangAdmin);
+    await lanjutkanSetelahLogin(supabase, jenjang);
     // Layar antrian sengaja TIDAK dimatikan kalau sapaan berhasil
     // dipasang — `setSapaan` sudah menggantikan lapisannya, dan
     // mematikan `loading` di sini akan membuat form di belakang
@@ -401,10 +402,6 @@ export default function LoginForm() {
     e.preventDefault();
     setError(null);
 
-    if (!jenjangSiswa) {
-      setError("Pilih kelas utama dulu (7, 8, atau 9).");
-      return;
-    }
     if (!kelasNama) {
       setError("Pilih kelasmu dulu.");
       return;
@@ -435,8 +432,8 @@ export default function LoginForm() {
 
     setLoading(true);
     setTahap("Memeriksa tanggal…");
-    setJenjangCookie(jenjangSiswa);
-    const supabase = createClient(jenjangSiswa);
+    await siapkanJenjang();
+    const supabase = createClient(jenjang);
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: `${siswaTerpilih.username}${SISWA_EMAIL_SUFFIX}`,
@@ -453,7 +450,7 @@ export default function LoginForm() {
       return;
     }
 
-    await lanjutkanSetelahLogin(supabase, jenjangSiswa);
+    await lanjutkanSetelahLogin(supabase, jenjang);
     setLoading(false);
     setTahap("");
   }
@@ -512,39 +509,18 @@ export default function LoginForm() {
       {tab === "siswa" ? (
         <form onSubmit={handleSubmitSiswa} className="space-y-4">
           <div>
-            <label htmlFor="jenjangSiswa" className="label-field">
-              Kelas Utama
-            </label>
-            <select
-              id="jenjangSiswa"
-              required
-              value={jenjangSiswa}
-              onChange={(e) => handleJenjangSiswaChange(e.target.value)}
-              className="field cursor-pointer"
-            >
-              <option value="">Pilih kelas utama…</option>
-              {JENJANG_LIST.map((j) => (
-                <option key={j} value={j}>
-                  {JENJANG_LABEL[j]}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
             <label htmlFor="kelasSiswa" className="label-field">
               Kelas
             </label>
             <select
               id="kelasSiswa"
               required
-              disabled={!jenjangSiswa}
               value={kelasNama}
               onChange={(e) => handleKelasChange(e.target.value)}
               className="field cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
             >
               <option value="">
-                {jenjangSiswa ? "Pilih kelas…" : "Pilih kelas utama dulu…"}
+                Pilih kelas…
               </option>
               {daftarKelas.map((k) => (
                 <option key={k} value={k}>
@@ -631,34 +607,6 @@ export default function LoginForm() {
         </form>
       ) : (
         <form onSubmit={handleSubmitAdmin} className="space-y-4">
-          <div>
-            <label htmlFor="jenjangAdmin" className="label-field">
-              Jenjang
-            </label>
-            <select
-              id="jenjangAdmin"
-              required
-              value={jenjangAdmin}
-              onChange={(e) =>
-                setJenjangAdmin(
-                  e.target.value ? (Number(e.target.value) as Jenjang) : ""
-                )
-              }
-              className="field cursor-pointer"
-            >
-              <option value="">Pilih jenjang…</option>
-              {JENJANG_LIST.map((j) => (
-                <option key={j} value={j}>
-                  {JENJANG_LABEL[j]}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1.5 text-[0.72rem] text-slate-500">
-              Data kelas 7, 8, dan 9 disimpan terpisah — pilih dulu jenjang
-              akunmu sebelum masuk.
-            </p>
-          </div>
-
           <div>
             <label htmlFor="adminIdentifier" className="label-field">
               Username / NIP

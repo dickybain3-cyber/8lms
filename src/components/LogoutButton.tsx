@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { clearJenjangCookie } from "@/lib/jenjang";
+import { clearJenjangCookie, getJenjangFromDocumentCookie, pathLogin } from "@/lib/jenjang";
 
 /**
  * Sesi 16 — belum pernah ada tombol logout sama sekali sejak Sesi 1
@@ -19,8 +18,14 @@ import { clearJenjangCookie } from "@/lib/jenjang";
  * `className` bisa dioper karena tampilannya beda di dua tempat: pil
  * merah di header siswa, dan tombol lebar di kaki sidebar admin.
  */
-export default function LogoutButton({ className }: { className?: string }) {
-  const router = useRouter();
+export default function LogoutButton({
+  className,
+  ringkas = false,
+}: {
+  className?: string;
+  /** true: di layar sempit hanya ikon (label tetap terbaca pembaca layar). */
+  ringkas?: boolean;
+}) {
   const [loading, setLoading] = useState(false);
 
   async function handleLogout() {
@@ -33,10 +38,13 @@ export default function LogoutButton({ className }: { className?: string }) {
       // duluan), tetap lanjut bersihkan & redirect — tidak ada gunanya
       // menahan orang tetap di halaman ini gara-gara logout "gagal".
     }
+    // Kembali ke halaman login jenjang yang sama (/kelas7 dst.), dan dengan
+    // MUAT ULANG penuh, bukan router.push: semua state & klien Supabase di
+    // memori ikut dibuang, jadi orang berikutnya di komputer lab yang sama
+    // benar-benar mulai dari nol.
+    const tujuan = pathLogin(getJenjangFromDocumentCookie());
     clearJenjangCookie();
-    setLoading(false);
-    router.push("/login");
-    router.refresh();
+    window.location.replace(tujuan);
   }
 
   return (
@@ -44,13 +52,16 @@ export default function LogoutButton({ className }: { className?: string }) {
       type="button"
       onClick={handleLogout}
       disabled={loading}
+      aria-label="Keluar"
       className={className ?? "btn-logout"}
     >
       <i
         className={`fas ${loading ? "fa-circle-notch fa-spin" : "fa-power-off"}`}
         aria-hidden
       />
-      {loading ? "Keluar…" : "Keluar"}
+      <span className={ringkas ? "hidden sm:inline" : undefined}>
+        {loading ? "Keluar…" : "Keluar"}
+      </span>
     </button>
   );
 }

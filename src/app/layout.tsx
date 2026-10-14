@@ -13,7 +13,9 @@ import { SEKOLAH } from "@/lib/branding";
 const poppins = Poppins({
   subsets: ["latin"],
   variable: "--font-serif",
-  weight: ["500", "600", "700", "800"],
+  // 600 & 700 saja (dulu juga 500 & 800): dua berkas font lebih sedikit
+  // yang harus diunduh HP sebelum judul tampil rapi.
+  weight: ["600", "700"],
   display: "swap",
 });
 

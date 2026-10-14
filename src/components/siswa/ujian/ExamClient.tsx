@@ -1033,9 +1033,16 @@ export default function ExamClient({
                     type="button"
                     onClick={() => bukaSoal(activeIndex - 1)}
                     disabled={activeIndex === 0}
-                    className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl border border-ink/15 bg-white text-sm font-semibold text-ink transition-colors active:bg-ink/5 disabled:opacity-35 touch-manipulation"
+                    aria-label="Soal sebelumnya"
+                    className="flex h-12 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border border-ink/15 bg-white px-2 text-sm font-semibold text-ink transition-colors active:bg-ink/5 disabled:opacity-35 touch-manipulation"
                   >
-                    <span aria-hidden>←</span> Sebelumnya
+                    {/* HP sempit (≤360 px): "← No. 4" muat tanpa terpotong
+                        dan sekaligus memberi tahu soal tujuannya. */}
+                    <span aria-hidden>←</span>
+                    <span className="truncate sm:hidden">
+                      {activeIndex > 0 ? `No. ${activeIndex}` : "Awal"}
+                    </span>
+                    <span className="hidden sm:inline">Sebelumnya</span>
                   </button>
 
                   {!readOnly ? (
@@ -1056,9 +1063,14 @@ export default function ExamClient({
                     type="button"
                     onClick={() => bukaSoal(activeIndex + 1)}
                     disabled={activeIndex === soalList.length - 1}
-                    className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl border border-ink/15 bg-white text-sm font-semibold text-ink transition-colors active:bg-ink/5 disabled:opacity-35 touch-manipulation"
+                    aria-label="Soal berikutnya"
+                    className="flex h-12 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border border-ink/15 bg-white px-2 text-sm font-semibold text-ink transition-colors active:bg-ink/5 disabled:opacity-35 touch-manipulation"
                   >
-                    Berikutnya <span aria-hidden>→</span>
+                    <span className="truncate sm:hidden">
+                      {activeIndex < soalList.length - 1 ? `No. ${activeIndex + 2}` : "Akhir"}
+                    </span>
+                    <span className="hidden sm:inline">Berikutnya</span>
+                    <span aria-hidden>→</span>
                   </button>
                 </div>
               </div>

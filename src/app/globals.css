@@ -123,6 +123,19 @@ body {
   animation: kilauSkeleton 1.4s linear infinite;
 }
 
+/* HP & tablet: matikan backdrop-filter (blur kaca). Di GPU HP kelas bawah,
+   blur pada elemen yang menempel (header ujian, bilah navigasi soal, kepala
+   tabel) membuat setiap guliran harus dikomposisi ulang -> tersendat.
+   Latar elemen-elemen itu sudah 95% padat, jadi tampilannya hampir sama. */
+@media (max-width: 1023px) {
+  *,
+  *::before,
+  *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
 /* Hormati setelan "kurangi animasi" di perangkat. Siswa/guru yang
    mengaktifkannya biasanya punya alasan (mabuk gerak, gangguan
    vestibular), dan indikator loading yang berkedip terus adalah salah
@@ -182,7 +195,10 @@ body {
 */
 
 @media print {
-  body * {
+  /* Hanya di halaman yang PUNYA .area-cetak (kartu peserta, denah). Dulu
+     `body *` berlaku di semua halaman, sehingga mencetak halaman lain
+     (mis. Statistik → Unduh PDF) menghasilkan kertas kosong. */
+  body:has(.area-cetak) * {
     visibility: hidden;
   }
 
@@ -655,4 +671,26 @@ body {
      :focus-within pada pembungkusnya — di sini cukup penanda bahwa
      gambar bisa diklik untuk mengatur lebarnya. */
   max-height: 20rem;
+}
+
+/* ── Cetak / "Unduh PDF" (halaman Statistik) ──────────────────────────────
+   Warna batang grafik ikut tercetak (bawaan browser membuang warna latar),
+   kertas A4 dengan margin wajar, dan bayangan dihilangkan supaya tajam. */
+@media print {
+  /* Ukuran kertas & margin (A4, 8 mm) diatur di blok CETAK di atas — jangan
+     ditimpa di sini, kartu peserta dihitung pas untuk margin itu. */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  tr,
+  li {
+    break-inside: avoid;
+  }
 }

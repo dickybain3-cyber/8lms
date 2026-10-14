@@ -75,8 +75,9 @@ export default function MenjodohkanViewer({
                 terisi ? "border-gold/40 bg-gold/[0.04]" : "border-ink/15 bg-white"
               }`}
             >
-              <div className="text-[15px] leading-relaxed text-ink">
-                <span className="mr-1.5 font-bold text-ink/45">{idx + 1}.</span>
+              <div className="flex gap-2 text-[15px] leading-relaxed text-ink">
+                <span className="w-5 shrink-0 font-bold text-ink/45">{idx + 1}.</span>
+                <div className="min-w-0 flex-1">
                 {/*
                   Kolom kiri boleh berisi gambar tempelan (bangun datar,
                   simbol, potongan peta). Kolom KANAN tidak — isinya harus
@@ -87,9 +88,10 @@ export default function MenjodohkanViewer({
                   html={s.teks_html}
                   teks={s.teks}
                   kecil
-                  className="inline-block w-full align-top"
+                  className="block w-full"
                 />
                 {s.gambar_url && <GambarSoal url={s.gambar_url} kecil />}
+                </div>
               </div>
               {/*
                 `text-base` wajib — sama alasannya dengan textarea di
