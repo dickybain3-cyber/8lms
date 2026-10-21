@@ -66,15 +66,15 @@ export function KepalaHalaman({
   aksi?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 items-start gap-3.5">
         {ikon && (
-          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-navy-600 to-navy-800 text-white shadow-lg shadow-navy-800/25">
+          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-navy-600 to-navy-800 text-white shadow-lg shadow-navy-800/25">
             <i className={`fas ${ikon}`} aria-hidden />
           </span>
         )}
         <div className="min-w-0">
-          <h1 className="font-serif text-[1.6rem] font-extrabold leading-tight tracking-tight text-navy-900">
+          <h1 className="font-serif text-[1.35rem] font-extrabold leading-tight tracking-tight text-navy-900">
             {judul}
           </h1>
           {keterangan && (

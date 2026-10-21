@@ -112,6 +112,7 @@ export default function GeneratorSoalAi({
   jenjangData,
   aiSiap,
   varian = "tombol",
+  renderPemicu,
 }: {
   eventId: string;
   mapelId: string;
@@ -123,6 +124,8 @@ export default function GeneratorSoalAi({
   /** Kunci Gemini untuk jenjang ini sudah dipasang di server? */
   aiSiap: boolean;
   varian?: "tombol" | "kartu";
+  /** Pemicu buatan sendiri (mis. ubin "3 cara input soal"). */
+  renderPemicu?: (buka: () => void) => React.ReactNode;
 }) {
   const router = useRouter();
   const [buka, setBuka] = useState(false);
@@ -140,6 +143,11 @@ export default function GeneratorSoalAi({
   const [jumlahOpsi, setJumlahOpsi] = useState<4 | 5>(4);
   const [totalSkor, setTotalSkor] = useState("100");
   const [catatan, setCatatan] = useState("");
+  /** "tinjau" = guru membaca & mengedit dulu; "langsung" = gambar dibuat
+   *  otomatis lalu semua soal langsung disimpan ke mapel (+ Bank Soal).
+   *  Soal yang gagal (mis. gambarnya gagal dibuat) tetap tinggal sebagai
+   *  draf untuk ditinjau — tidak ada yang hilang diam-diam. */
+  const [setelahSelesai, setSetelahSelesai] = useState<"tinjau" | "langsung">("tinjau");
   const [galatPetunjuk, setGalatPetunjuk] = useState<string | null>(null);
 
   // ── Proses & tinjau ──
@@ -151,6 +159,8 @@ export default function GeneratorSoalAi({
   const [ringkasanSimpan, setRingkasanSimpan] = useState<string | null>(null);
   const rencanaTerakhir = useRef<RencanaGenerate | null>(null);
   const batal = useRef(false);
+  const drafRef = useRef<DrafTinjau[]>([]);
+  drafRef.current = draf;
 
   const total = totalSoal(jumlah);
   const targetSkor = Number(totalSkor) > 0 ? Number(totalSkor) : 100;
@@ -255,8 +265,10 @@ export default function GeneratorSoalAi({
       }
     }
     setDraf(hasil);
+    drafRef.current = hasil;
     tulisDrafLokal(mapelId, hasil);
     if (hasil.length > 0) setFase("tinjau");
+    return hasil.length;
   }
 
   async function mulai() {
@@ -271,7 +283,20 @@ export default function GeneratorSoalAi({
       setTopik(r.topik);
       setTopikBaru("");
     }
-    await jalankanGenerate(r, draf);
+    const jumlahDraf = await jalankanGenerate(r, draf);
+    if (setelahSelesai === "langsung" && jumlahDraf > 0 && !batal.current) {
+      await langsungGunakan();
+    }
+  }
+
+  /** Buat semua gambar yang dibutuhkan, lalu simpan semua draf. */
+  async function langsungGunakan() {
+    if (drafRef.current.some((d) => d.dipakai && d.gambar && !d.gambarStatus.url)) {
+      await buatSemuaGambar();
+      // Beri React satu putaran untuk memperbarui `drafRef` dengan URL gambar.
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    await simpanSemua();
   }
 
   function ubahDraf(id: string, fn: (d: DrafTinjau) => DrafTinjau) {
@@ -283,7 +308,7 @@ export default function GeneratorSoalAi({
     jenis: "diagram" | "ilustrasi" | "unggah",
     kerja: (d: DrafTinjau) => Promise<{ url: string; jedaDetik?: number }>
   ): Promise<{ ok: boolean; jedaDetik?: number; galat?: unknown }> {
-    const d = draf.find((x) => x.idLokal === id);
+    const d = drafRef.current.find((x) => x.idLokal === id);
     if (!d) return { ok: false };
     ubahDraf(id, (x) => ({ ...x, gambarStatus: { ...x.gambarStatus, proses: jenis, galat: null } }));
     try {
@@ -328,7 +353,7 @@ export default function GeneratorSoalAi({
   async function buatSemuaGambar() {
     setGambarMassal(true);
     batal.current = false;
-    const antre = draf
+    const antre = drafRef.current
       .filter((d) => d.dipakai && d.gambar && !d.gambarStatus.url)
       .sort((a, b) => (a.gambar!.jenis === "diagram" ? 0 : 1) - (b.gambar!.jenis === "diagram" ? 0 : 1));
 
@@ -351,7 +376,7 @@ export default function GeneratorSoalAi({
   }
 
   async function gantiSoal(id: string) {
-    const d = draf.find((x) => x.idLokal === id);
+    const d = drafRef.current.find((x) => x.idLokal === id);
     const r = rencanaTerakhir.current ?? susunRencana();
     if (!d || typeof r === "string") return;
     const satu: RencanaGenerate = {
@@ -388,7 +413,10 @@ export default function GeneratorSoalAi({
     let berhasil = 0;
     const tersisa: DrafTinjau[] = [];
 
-    for (const d of draf) {
+    // Dibaca dari ref, bukan dari `draf` di closure: saat dipanggil lewat
+    // "Langsung simpan", gambar baru saja selesai dibuat dan closure ini
+    // masih memegang daftar draf versi sebelum gambarnya ada.
+    for (const d of drafRef.current) {
       if (!d.dipakai) {
         tersisa.push(d);
         continue;
@@ -418,10 +446,11 @@ export default function GeneratorSoalAi({
     }
 
     setDraf(tersisa);
+    drafRef.current = tersisa;
     tulisDrafLokal(mapelId, tersisa);
     setMenyimpan(false);
     setRingkasanSimpan(
-      `${berhasil} soal tersimpan ke ${mapelNama}${
+      `${berhasil} soal tersimpan ke ${mapelNama} dan Bank Soal${
         tersisa.filter((d) => d.dipakai).length
           ? ` · ${tersisa.filter((d) => d.dipakai).length} perlu dibetulkan (lihat tanda merah)`
           : ""
@@ -440,8 +469,9 @@ export default function GeneratorSoalAi({
 
   // ───────────────────────────── Render ─────────────────────────────
 
-  const pemicu =
-    varian === "kartu" ? (
+  const pemicu = renderPemicu ? (
+    renderPemicu(() => setBuka(true))
+  ) : varian === "kartu" ? (
       <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-navy-100 bg-gradient-to-br from-navy-50 to-white p-5 sm:flex-row sm:items-center">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-navy-800 text-white">
           <i className="fas fa-wand-magic-sparkles" aria-hidden />
@@ -706,6 +736,57 @@ export default function GeneratorSoalAi({
                         />
                       </div>
                     </div>
+                  </Bagian>
+
+                  <Bagian nomor={4} judul="Setelah AI selesai">
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                      {(
+                        [
+                          {
+                            v: "tinjau",
+                            ikon: "fa-pen-to-square",
+                            judul: "Tinjau & edit dulu",
+                            ket: "Baca setiap soal, betulkan, pilih gambarnya, lalu simpan. Disarankan.",
+                          },
+                          {
+                            v: "langsung",
+                            ikon: "fa-bolt",
+                            judul: "Langsung gunakan",
+                            ket: "Gambar dibuat otomatis, semua soal langsung masuk mapel ini + Bank Soal.",
+                          },
+                        ] as const
+                      ).map((o) => (
+                        <button
+                          key={o.v}
+                          type="button"
+                          onClick={() => setSetelahSelesai(o.v)}
+                          className={`flex items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors ${
+                            setelahSelesai === o.v
+                              ? "border-navy-700 bg-navy-50"
+                              : "border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                        >
+                          <span
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm ${
+                              setelahSelesai === o.v ? "bg-navy-800 text-white" : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            <i className={`fas ${o.ikon}`} aria-hidden />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-semibold text-ink">{o.judul}</span>
+                            <span className="block text-[0.72rem] leading-snug text-slate-500">{o.ket}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {setelahSelesai === "langsung" && (
+                      <p className="mt-2 text-[0.72rem] text-amber-700">
+                        <i className="fas fa-triangle-exclamation mr-1" aria-hidden />
+                        Hasil AI bisa keliru. Cek lagi lewat Pratinjau Ujian sebelum
+                        ujian dimulai. Soal yang gagal disimpan tetap muncul sebagai draf.
+                      </p>
+                    )}
                   </Bagian>
 
                   {galatPetunjuk && (

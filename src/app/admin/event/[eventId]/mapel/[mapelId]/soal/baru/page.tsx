@@ -7,7 +7,7 @@ import { parseJenjang, type Jenjang } from "@/lib/jenjang";
 import JenjangSwitcher from "@/components/admin/JenjangSwitcher";
 import BadgeJenjang from "@/components/admin/BadgeJenjang";
 import { Info, KepalaHalaman, Remah } from "@/components/ui/Panel";
-import GeneratorSoalAi from "@/components/admin/AiSoal/GeneratorSoalAi";
+import PilihanInputSoal from "@/components/admin/AiSoal/PilihanInputSoal";
 import { aiSiapJenjang } from "@/lib/ai/akses";
 
 /**
@@ -132,16 +132,17 @@ export default async function SoalBaruPage({
         tersimpan otomatis ikut diarsipkan ke Bank Soal.
       </Info>
 
-      <GeneratorSoalAi
+      <PilihanInputSoal
         eventId={params.eventId}
         mapelId={params.mapelId}
         mapelNama={mapel.nama}
         jenjang={jenjang}
         jenjangData={jenjang ?? sesi.jenjang}
         aiSiap={await aiSiapJenjang(jenjang ?? sesi.jenjang)}
-        varian="kartu"
+        hrefManual="#form-manual"
       />
 
+      <div id="form-manual" className="scroll-mt-20" />
       <SoalForm
         eventId={params.eventId}
         mapelId={params.mapelId}

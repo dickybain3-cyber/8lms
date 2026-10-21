@@ -13,6 +13,8 @@ import DeleteMapelButton from "./DeleteMapelButton";
 import DeleteSoalButton from "./DeleteSoalButton";
 import SkorInline from "./SkorInline";
 import GeneratorSoalAi from "@/components/admin/AiSoal/GeneratorSoalAi";
+import AmbilDariBank from "@/components/admin/AiSoal/AmbilDariBank";
+import PilihanInputSoal from "@/components/admin/AiSoal/PilihanInputSoal";
 import { aiSiapJenjang } from "@/lib/ai/akses";
 import { getJenjangFromServerCookies } from "@/lib/jenjang-server";
 import {
@@ -260,6 +262,7 @@ async function IsiHalamanMapel({
             )}
 
             {generatorAi("tombol")}
+            <AmbilDariBank mapelId={mapelId} mapelNama={mapel.nama} jenjang={jenjang} />
             <Link
               href={`/admin/event/${eventId}/mapel/${mapelId}/soal/baru${qs}`}
               className={TOMBOL_UTAMA}
@@ -335,7 +338,17 @@ async function IsiHalamanMapel({
         </Info>
       )}
 
-      {!adaSoal && generatorAi("kartu")}
+      {!adaSoal && (
+        <PilihanInputSoal
+          eventId={eventId}
+          mapelId={mapelId}
+          mapelNama={mapel.nama}
+          jenjang={jenjang}
+          jenjangData={jenjangData}
+          aiSiap={aiSiap}
+          hrefManual={`/admin/event/${eventId}/mapel/${mapelId}/soal/baru${qs}`}
+        />
+      )}
 
       {!adaSoal ? (
         <Kosong

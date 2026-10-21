@@ -86,7 +86,7 @@ export default function JenjangSwitcherGlobal({
               key={j}
               href={href}
               aria-current={aktif ? "page" : undefined}
-              className={`rounded-lg px-3 py-1.5 text-sm font-bold transition-colors ${
+              className={`rounded-lg px-2.5 py-1 text-[0.8rem] font-bold transition-colors ${
                 aktif
                   ? "bg-white text-ink shadow-sm"
                   : "text-white/75 hover:bg-white/15 hover:text-white"

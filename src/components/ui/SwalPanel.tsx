@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { LOGO_URL_KECIL, SEKOLAH } from "@/lib/branding";
 
 /**
  * Layar antrian + sapaan sukses saat login.
@@ -84,7 +85,7 @@ export function LayarAntrian({ tahap }: { tahap: string }) {
   if (!target) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/70 px-5 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-navy-950/70 px-5 backdrop-blur-sm">
       <div className="w-full max-w-[320px] animasi-muncul rounded-3xl bg-white px-7 py-9 text-center shadow-2xl">
         <div className="relative mx-auto mb-6 h-16 w-16">
           <span className="absolute inset-0 animate-ping rounded-full bg-blue-500/20" />
@@ -160,68 +161,68 @@ export function SapaanSukses({
   if (!target) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/70 px-5 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-navy-950/70 px-5 backdrop-blur-sm">
       <div className="w-full max-w-[340px] animasi-muncul overflow-hidden rounded-3xl bg-white text-center shadow-2xl">
-        <div className="relative overflow-hidden bg-gradient-to-br from-navy-600 via-navy-700 to-navy-900 px-6 pb-12 pt-8">
-          {/* Dua lingkaran dekoratif setengah-transparan — pemanis murni
-              CSS, tanpa gambar yang perlu diunduh, supaya kartunya terasa
-              lebih "berkelas" tanpa menambah beban halaman login yang
-              dibuka 600 HP sekaligus. */}
+        {/* Kepala biru tua logo + garis kuning. Avatar di bawahnya diberi
+            `relative z-10` — tanpa itu kepala yang `relative` digambar DI
+            ATAS avatar dan avatarnya tampak terpotong. */}
+        <div className="relative bg-gradient-to-br from-navy-700 via-navy-800 to-navy-950 px-6 pb-12 pt-6">
           <span
-            className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10"
+            className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-kuning/15"
             aria-hidden
           />
-          <span
-            className="pointer-events-none absolute -bottom-12 -left-6 h-24 w-24 rounded-full bg-white/10"
-            aria-hidden
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={LOGO_URL_KECIL}
+            alt=""
+            width={44}
+            height={44}
+            className="relative mx-auto h-11 w-11 rounded-full bg-white object-contain p-0.5 shadow-md"
           />
-          <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-white/15 ring-4 ring-white/25 backdrop-blur-sm">
-            <i
-              className="fas fa-circle-check text-4xl text-white"
-              aria-hidden
-            />
-          </div>
-          <p className="relative mt-4 text-[0.7rem] font-bold uppercase tracking-[0.2em] text-white/80">
+          <p className="relative mt-2 text-[0.7rem] font-bold uppercase tracking-[0.18em] text-kuning">
             Berhasil masuk
           </p>
+          <p className="relative text-[0.72rem] text-navy-100/80">
+            LMS {SEKOLAH.nama} {SEKOLAH.kota}
+          </p>
         </div>
+        <div className="h-1 bg-kuning" />
 
-        <div className="-mt-10 px-6 pb-7">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl border-4 border-white bg-gradient-to-br from-amber-400 to-amber-500 font-serif text-3xl font-bold text-white shadow-lg">
+        <div className="px-6 pb-6">
+          <div className="relative z-10 mx-auto -mt-10 flex h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-kuning to-amber-400 font-serif text-3xl font-extrabold text-navy-900 shadow-lg">
             {inisial}
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-[0.65rem] text-white">
+              <i className="fas fa-check" aria-hidden />
+            </span>
           </div>
 
-          <p className="mt-4 text-sm text-slate-500">Selamat datang,</p>
+          <p className="mt-3 text-sm text-slate-500">Selamat datang,</p>
           <p className="mt-0.5 break-words font-serif text-xl font-bold leading-tight text-ink">
             {data.nama}
           </p>
 
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-[0.75rem] font-semibold text-blue-700">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-navy-50 px-3 py-1 text-[0.75rem] font-semibold text-navy-700">
               <i className="fas fa-id-badge" aria-hidden />
               {data.peran}
             </span>
             {data.kelas && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[0.75rem] font-semibold text-emerald-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[0.75rem] font-semibold text-emerald-700">
                 <i className="fas fa-users-rectangle" aria-hidden />
                 Kelas {data.kelas}
               </span>
             )}
             {!data.kelas && data.jenjangLabel && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-[0.75rem] font-semibold text-slate-600">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-[0.75rem] font-semibold text-slate-600">
                 <i className="fas fa-layer-group" aria-hidden />
                 {data.jenjangLabel}
               </span>
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={onSelesai}
-            className="mt-6 w-full rounded-xl bg-ink py-3 text-sm font-semibold text-white transition-colors hover:bg-ink-light"
-          >
+          <button type="button" onClick={onSelesai} className="btn-navy mt-5 w-full py-3">
             Lanjutkan
-            <span className="ml-1.5 text-white/60">({sisa})</span>
+            <span className="text-white/60">({sisa})</span>
           </button>
         </div>
       </div>
