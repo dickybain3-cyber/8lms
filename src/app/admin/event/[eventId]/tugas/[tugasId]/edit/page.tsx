@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { untukInputDatetime } from "@/lib/tugas";
 import TugasForm, { type KelasPilihan } from "../../TugasForm";
+import { aiSiapJenjang } from "@/lib/ai/akses";
 
 export default async function TugasEditPage({
   params,
@@ -55,6 +56,7 @@ export default async function TugasEditPage({
       <h1 className="mb-6 font-serif text-2xl text-ink">Edit Tugas</h1>
 
       <TugasForm
+        aiSiap={await aiSiapJenjang()}
         eventId={params.eventId}
         tugasId={tugas.id as string}
         kelasList={kelas}

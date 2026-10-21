@@ -42,7 +42,7 @@ export default function HalamanLogin({ jenjang }: { jenjang: Jenjang }) {
           <h1 className="mt-1 font-serif text-[1.6rem] font-bold leading-tight text-ink">
             Masuk {JENJANG_LABEL[jenjang]}
           </h1>
-          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-[0.72rem] font-semibold text-teal">
+          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-navy-50 px-3 py-1 text-[0.72rem] font-semibold text-teal">
             <i className="fas fa-database text-[0.65rem]" aria-hidden />
             Database khusus {JENJANG_LABEL[jenjang]}
           </span>

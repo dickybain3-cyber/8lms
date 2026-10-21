@@ -715,7 +715,7 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
                     key={s.id}
                     type="button"
                     onClick={() => pilihSiswa(s)}
-                    className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-left text-sm text-ink transition-colors last:border-0 hover:bg-blue-50"
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-left text-sm text-ink transition-colors last:border-0 hover:bg-navy-50"
                   >
                     <i
                       className="fas fa-user-graduate text-xs text-slate-400"
@@ -762,7 +762,7 @@ function TombolMasuk({
     <button
       type="submit"
       disabled={loading || disabled}
-      className="w-full rounded-xl bg-[#004e92] py-3 text-sm font-semibold uppercase tracking-wide text-white transition-colors hover:bg-[#0066cc] disabled:cursor-not-allowed disabled:opacity-50"
+      className="w-full rounded-xl bg-gradient-to-br from-navy-600 to-navy-800 py-3 text-sm font-semibold uppercase tracking-wide text-white transition-colors hover:from-navy-700 hover:to-navy-900 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {loading ? (
         <>

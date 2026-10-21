@@ -147,7 +147,7 @@ function KartuEvent({
     tombol Buka ulang berdiri di atasnya lewat `relative z-10`.
   */
   return (
-    <div className="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-blue-600/10">
+    <div className="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-navy-800/10">
       <div className="mb-3 flex items-start justify-between gap-2">
         <h3 className="min-w-0 font-serif text-lg font-bold leading-snug text-ink">
           <Link

@@ -45,7 +45,7 @@ export default function PilihKelasPage() {
             <li key={j}>
               <Link
                 href={JENJANG_LOGIN_PATH[j]}
-                className="flex min-h-[64px] items-center gap-4 rounded-xl border border-slate-200 px-4 py-3 transition-colors hover:border-teal hover:bg-blue-50 active:bg-blue-100"
+                className="flex min-h-[64px] items-center gap-4 rounded-xl border border-slate-200 px-4 py-3 transition-colors hover:border-teal hover:bg-navy-50 active:bg-navy-100"
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal font-serif text-lg font-bold text-white">
                   {j}

@@ -9,20 +9,22 @@
   Nilai di sini HARUS sinkron dengan `tailwind.config.ts`.
 */
 :root {
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --accent: #3b82f6;
+  /* Biru tua sekolah — sinkron dengan palet `navy` di tailwind.config.ts */
+  --primary: #24338f;
+  --primary-hover: #1d2a78;
+  --accent: #3d52bd;
   --secondary: #64748b;
   --success: #10b981;
   --danger: #ef4444;
   --danger-light: #fee2e2;
-  --bg: #f8fafc;
+  --bg: #eef1f9;
   --surface: #ffffff;
   --border: #e2e8f0;
-  --text-main: #1e293b;
+  --text-main: #1a2154;
   --text-muted: #94a3b8;
-  --sidebar: #1e293b;
-  --sidebar-dark: #0f172a;
+  --sidebar: #1d2a78;
+  --sidebar-dark: #172060;
+  --kuning: #facc15;
 }
 
 html {
@@ -52,6 +54,25 @@ body {
 
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-xl bg-[--primary] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[--primary-hover] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Tombol biru tua (fitur AI & halaman bertema baru). */
+  .btn-navy {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-navy-600 to-navy-800 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-navy-800/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-navy-800/30 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none;
+  }
+
+  .btn-navy-outline {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border-2 border-navy-700/80 bg-white px-4 py-2 text-sm font-semibold text-navy-800 transition-colors hover:bg-navy-50 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Pil label berwarna gaya desain acuan. */
+  .pil {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold;
+  }
+
+  /* Kepala tabel biru tua — untuk tabel yang ingin memakai gaya acuan. */
+  .thead-navy th {
+    @apply bg-navy-800 px-4 py-3 text-left text-[0.7rem] font-bold uppercase tracking-wide text-white;
   }
 
   .btn-ghost {

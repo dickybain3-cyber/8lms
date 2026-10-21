@@ -1,6 +1,8 @@
 "use client";
 
+import { useRef } from "react";
 import { useFormState, useFormStatus } from "react-dom";
+import LembarKerjaAi from "@/components/admin/AiSoal/LembarKerjaAi";
 import { createTugas, updateTugas, type ActionState } from "./actions";
 import { KETERANGAN_BERKAS } from "@/lib/tugas-berkas";
 
@@ -58,6 +60,7 @@ export default function TugasForm({
   kelasList,
   awal,
   adaPengumpulan,
+  aiSiap = false,
 }: {
   eventId: string;
   /** Ada = mode edit. */
@@ -66,14 +69,57 @@ export default function TugasForm({
   awal?: NilaiAwalTugas;
   /** Jumlah siswa yang SUDAH mengumpulkan — cuma relevan di mode edit. */
   adaPengumpulan?: number;
+  /** Kunci Gemini jenjang ini sudah dipasang (dihitung di Server Component). */
+  aiSiap?: boolean;
 }) {
   const action = tugasId
     ? updateTugas.bind(null, eventId, tugasId)
     : createTugas.bind(null, eventId);
   const [state, formAction] = useFormState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  /** Isi judul & instruksi dari hasil AI. Kolomnya tidak terkendali
+   *  (defaultValue), jadi nilainya ditulis langsung ke elemen form. */
+  function isiDariAi(h: { judul: string; deskripsi: string }) {
+    const form = formRef.current;
+    if (!form) return;
+    const judul = form.elements.namedItem("judul") as HTMLInputElement | null;
+    const deskripsi = form.elements.namedItem("deskripsi") as HTMLTextAreaElement | null;
+    if (
+      (judul?.value.trim() || deskripsi?.value.trim()) &&
+      !confirm("Judul/instruksi yang sudah diketik akan diganti hasil AI. Lanjutkan?")
+    ) {
+      return;
+    }
+    if (judul) judul.value = h.judul;
+    if (deskripsi) {
+      deskripsi.value = h.deskripsi;
+      deskripsi.rows = Math.min(24, Math.max(6, h.deskripsi.split("\n").length + 1));
+      deskripsi.focus();
+    }
+  }
+
+  function bacaBentuk() {
+    const form = formRef.current;
+    const cek = (n: string) =>
+      (form?.elements.namedItem(n) as HTMLInputElement | null)?.checked ?? false;
+    return { mintaTeks: cek("minta_teks"), mintaBerkas: cek("minta_berkas") };
+  }
 
   return (
-    <form action={formAction} className="max-w-2xl space-y-5">
+    <form ref={formRef} action={formAction} className="max-w-2xl space-y-5">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-navy-100 bg-navy-50/70 px-4 py-3">
+        <p className="min-w-0 flex-1 text-sm text-navy-900">
+          <i className="fas fa-wand-magic-sparkles mr-2" aria-hidden />
+          Biar AI menyusun draf lembar kerjanya — kamu tinggal merapikan.
+        </p>
+        <LembarKerjaAi
+          eventId={eventId}
+          aiSiap={aiSiap}
+          bacaBentuk={bacaBentuk}
+          onHasil={isiDariAi}
+        />
+      </div>
       {/*
         Peringatan ini muncul SEBELUM guru menyentuh apa pun, bukan
         sebagai konfirmasi setelah menekan Simpan. Mengubah tenggat tugas

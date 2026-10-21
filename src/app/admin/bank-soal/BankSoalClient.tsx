@@ -318,7 +318,7 @@ function PilMapel({
       onClick={onClick}
       className={`flex shrink-0 items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold transition-colors lg:w-full ${
         aktif
-          ? "bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white shadow-md shadow-blue-600/20"
+          ? "bg-gradient-to-br from-navy-600 to-navy-800 text-white shadow-md shadow-navy-800/20"
           : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
       }`}
     >

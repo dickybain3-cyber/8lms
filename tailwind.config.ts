@@ -13,7 +13,20 @@ import type { Config } from "tailwindcss";
  * kelas di puluhan file. Jadi kalau di kode terbaca `text-ink`, artinya
  * sekarang "slate gelap", bukan lagi "navy tinta".
  *
- * Peta ke desain acuan:
+ * ── TEMA BIRU TUA SEKOLAH (revisi UI berikutnya) ──
+ *
+ * Mengikuti desain acuan bergaya "kabinet guru" (sidebar mengambang
+ * berwarna gelap, latar terang kebiruan, kepala tabel berwarna, label
+ * pil berwarna), dengan warna khas SMPN 8 Probolinggo: biru tua.
+ * Palet `navy` di bawah adalah SATU-SATUNYA sumber biru tua — kalau
+ * sekolah punya kode warna resmi, cukup ganti angka-angka di `navy`
+ * (dan --primary/--sidebar di globals.css).
+ *
+ * `gold`/`teal` (aksen & tombol utama lama) kini menunjuk ke nada navy
+ * juga, supaya halaman lama yang memakai `focus:border-gold` atau
+ * `text-teal` ikut berganti tanpa diubah satu per satu.
+ *
+ * Peta lama ke desain acuan (sebelum revisi biru tua):
  *   ink    -> #1e293b  (--text-main)
  *   paper  -> #f8fafc  (--bg)
  *   gold   -> #3b82f6  (--accent, dipakai sebagai warna aksen/aktif)
@@ -27,23 +40,45 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Teks utama: biru sangat tua (turunan biru logo), bukan abu slate.
         ink: {
-          DEFAULT: "#1e293b",
-          light: "#334155",
-          dark: "#0f172a",
+          DEFAULT: "#1a2154",
+          light: "#2c3a8a",
+          dark: "#0e1440",
         },
         paper: {
-          DEFAULT: "#f8fafc",
-          dark: "#eef2f7",
+          DEFAULT: "#eef1f9",
+          dark: "#e2e8f3",
+        },
+        navy: {
+          // Diambil dari biru lingkaran logo SMPN 8 Probolinggo.
+          50: "#eef1fb",
+          100: "#dce2f7",
+          200: "#b8c3ee",
+          300: "#8b9ce0",
+          400: "#5d72cf",
+          500: "#3d52bd",
+          600: "#2c3fa6",
+          700: "#24338f",
+          800: "#1d2a78",
+          900: "#172060",
+          950: "#0e1440",
+          DEFAULT: "#1d2a78",
+        },
+        // Kuning pena/obor di logo — aksen hangat (penanda aktif, sorotan).
+        kuning: {
+          DEFAULT: "#facc15",
+          light: "#fef08a",
+          dark: "#ca8a04",
         },
         gold: {
-          DEFAULT: "#3b82f6",
-          light: "#60a5fa",
-          dark: "#2563eb",
+          DEFAULT: "#2c3fa6",
+          light: "#3d52bd",
+          dark: "#1d2a78",
         },
         teal: {
-          DEFAULT: "#2563eb",
-          light: "#3b82f6",
+          DEFAULT: "#24338f",
+          light: "#2c3fa6",
         },
         ok: "#10b981",
         danger: "#ef4444",

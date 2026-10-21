@@ -192,7 +192,7 @@ export default function SoalForm({
 
       <div className="flex flex-wrap items-center gap-3">
         {nomorTampil !== undefined && mode === "tambah" && (
-          <span className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-[#3b82f6] to-[#2563eb] px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-600/25">
+          <span className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-navy-600 to-navy-800 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-navy-800/25">
             <i className="fas fa-hashtag text-xs" aria-hidden />
             Soal ke-{nomorTampil}
           </span>
@@ -240,7 +240,7 @@ export default function SoalForm({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] sm:p-6">
         <div className="mb-4 flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-ink text-xs font-bold text-white">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-navy-800 text-xs font-bold text-white">
             1
           </span>
           <h2 className="font-serif text-lg font-bold text-ink">Bentuk soal</h2>
@@ -279,14 +279,14 @@ export default function SoalForm({
                     }}
                     className={`group flex flex-col items-start gap-1.5 rounded-xl border-2 p-3.5 text-left transition-all ${
                       dipilih
-                        ? "border-[--primary] bg-blue-50/70 shadow-md shadow-blue-600/10"
+                        ? "border-navy-700 bg-navy-50/70 shadow-md shadow-navy-800/10"
                         : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm"
                     }`}
                   >
                     <span
                       className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm transition-colors ${
                         dipilih
-                          ? "bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white"
+                          ? "bg-gradient-to-br from-navy-600 to-navy-800 text-white"
                           : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
                       }`}
                     >
@@ -316,7 +316,7 @@ export default function SoalForm({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] sm:p-6">
         <div className="mb-4 flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-ink text-xs font-bold text-white">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-navy-800 text-xs font-bold text-white">
             2
           </span>
           <h2 className="font-serif text-lg font-bold text-ink">Isi soal</h2>
@@ -359,7 +359,7 @@ export default function SoalForm({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] sm:p-6">
         <div className="mb-4 flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-ink text-xs font-bold text-white">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-navy-800 text-xs font-bold text-white">
             3
           </span>
           <h2 className="font-serif text-lg font-bold text-ink">Bobot skor</h2>

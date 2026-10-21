@@ -156,7 +156,7 @@ export default function PreviewClient({
                 aria-label={`Ke soal ${i + 1}`}
                 className={`h-9 w-9 rounded-lg text-xs font-bold tabular-nums transition-colors ${
                   i === indeks
-                    ? "bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white shadow-md"
+                    ? "bg-gradient-to-br from-navy-600 to-navy-800 text-white shadow-md"
                     : jawaban[s.id] !== undefined
                       ? "bg-emerald-100 text-emerald-700"
                       : "bg-slate-100 text-slate-500 hover:bg-slate-200"

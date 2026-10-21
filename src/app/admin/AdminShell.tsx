@@ -174,7 +174,7 @@ export default function AdminShell({
     <div className="min-h-screen bg-paper">
       <NavigasiProgress />
       {/* Topbar khusus layar kecil */}
-      <div className="sticky top-0 z-40 flex h-14 items-center gap-3 bg-ink px-4 shadow-lg print:hidden lg:hidden">
+      <div className="sticky top-0 z-40 flex h-14 items-center gap-3 bg-gradient-to-r from-navy-800 to-navy-900 px-4 shadow-lg print:hidden lg:hidden">
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -206,7 +206,7 @@ export default function AdminShell({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex print:hidden w-[260px] flex-col overflow-y-auto bg-ink shadow-[4px_0_20px_rgba(0,0,0,0.15)] transition-transform duration-300 lg:translate-x-0 ${
+        className={`scroll-halus fixed inset-y-0 left-0 z-50 flex print:hidden w-[260px] flex-col overflow-y-auto bg-gradient-to-b from-navy-800 via-navy-900 to-navy-950 shadow-[4px_0_24px_rgba(8,22,58,0.25)] transition-transform duration-300 lg:inset-y-4 lg:left-4 lg:translate-x-0 lg:rounded-3xl ${
           drawerOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -219,18 +219,21 @@ export default function AdminShell({
           <i className="fas fa-xmark" aria-hidden />
         </button>
 
-        <div className="shrink-0 px-4 py-5 text-center">
-          <Image
-            src={LOGO_URL_KECIL}
-            alt={`Logo ${SEKOLAH.nama}`}
-            width={50}
-            height={50}
-            className="mx-auto h-[50px] w-auto object-contain"
-          />
-          <p className="mt-3 font-serif text-[0.8rem] font-bold leading-snug text-white">
+        <div className="mx-4 flex shrink-0 items-center gap-3 border-b border-white/10 py-5">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/95 p-1.5 shadow-md">
+            <Image
+              src={LOGO_URL_KECIL}
+              alt={`Logo ${SEKOLAH.nama}`}
+              width={40}
+              height={40}
+              className="h-full w-auto object-contain"
+            />
+          </span>
+          <p className="min-w-0 font-serif text-[0.8rem] font-extrabold uppercase leading-tight tracking-wide text-white">
             LMS {SEKOLAH.nama}
-            <br />
-            {SEKOLAH.kota}
+            <span className="block text-[0.68rem] font-semibold tracking-[0.12em] text-navy-200">
+              {SEKOLAH.kota}
+            </span>
           </p>
         </div>
 
@@ -241,10 +244,10 @@ export default function AdminShell({
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all ${
+                    className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
                       aktif(pathname, item.href)
-                        ? "bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white shadow-lg shadow-blue-600/30"
-                        : "text-slate-300 hover:translate-x-1 hover:bg-white/5 hover:text-white"
+                        ? "bg-white text-navy-800 shadow-[inset_4px_0_0_#facc15,0_10px_15px_-3px_rgba(0,0,0,0.2)]"
+                        : "text-navy-100/85 hover:translate-x-1 hover:bg-white/10 hover:text-white"
                     }`}
                   >
                     <i className={`fas ${item.ikon} w-5 text-center`} aria-hidden />
@@ -259,10 +262,10 @@ export default function AdminShell({
                       setGrupTerbuka((g) => (g === item.id ? null : item.id))
                     }
                     aria-expanded={grupTerbuka === item.id}
-                    className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-all ${
+                    className={`flex w-full items-center justify-between rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
                       grupTerbuka === item.id
-                        ? "bg-black/25 text-sky-400"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
+                        ? "bg-white/10 text-white"
+                        : "text-navy-100/85 hover:bg-white/10 hover:text-white"
                     }`}
                   >
                     <span className="flex items-center gap-3">
@@ -281,15 +284,15 @@ export default function AdminShell({
                   </button>
 
                   {grupTerbuka === item.id && (
-                    <ul className="ml-6 mt-1 space-y-1 border-l-2 border-blue-500/20 pl-3">
+                    <ul className="ml-6 mt-1 space-y-1 border-l-2 border-white/15 pl-3">
                       {item.anak.map((anak) => (
                         <li key={anak.href}>
                           <Link
                             href={anak.href}
-                            className={`flex items-center gap-3 rounded-r-lg px-3 py-2.5 text-[0.85rem] transition-all ${
+                            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[0.84rem] transition-all ${
                               aktif(pathname, anak.href)
-                                ? "bg-sky-400/10 font-semibold text-sky-400"
-                                : "text-slate-300 hover:translate-x-1 hover:bg-white/5 hover:text-white"
+                                ? "bg-white font-semibold text-navy-800 shadow-[inset_3px_0_0_#facc15]"
+                                : "text-navy-100/80 hover:translate-x-1 hover:bg-white/10 hover:text-white"
                             }`}
                           >
                             <i
@@ -321,23 +324,42 @@ export default function AdminShell({
           </div>
         )}
 
-        <div className="mt-auto shrink-0 border-t border-white/5 bg-ink-dark p-3">
+        <div className="mt-auto shrink-0 border-t border-white/10 p-3">
+          <Link
+            href="/admin/profil"
+            className="mb-2.5 flex items-center gap-3 rounded-2xl bg-white/[0.07] p-2.5 transition-colors hover:bg-white/[0.12]"
+          >
+            <AvatarGuru
+              fotoUrl={fotoUrl}
+              nama={namaGuru}
+              ukuran={38}
+              className="ring-2 ring-white/30"
+            />
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate text-[0.8rem] font-semibold text-white">
+                {namaGuru ?? "Guru"}
+              </span>
+              <span className="block truncate text-[0.68rem] text-navy-200">
+                {userEmail ?? (isAdmin ? "Administrator" : "Guru")}
+              </span>
+            </span>
+          </Link>
           <LogoutButton className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 transition-colors hover:bg-red-500 hover:text-white disabled:opacity-50" />
-          <p className="mt-2 text-center font-mono text-[0.65rem] text-slate-500">
+          <p className="mt-2 text-center font-mono text-[0.65rem] text-navy-300/70">
             Created by <b>{SEKOLAH.pembuat}</b>
           </p>
         </div>
       </aside>
 
       {/* Isi halaman. `lg:ml-[260px]` mengimbangi sidebar yang fixed. */}
-      <div className="lg:ml-[260px] print:ml-0">
+      <div className="lg:ml-[292px] print:ml-0">
         {/* Hanya layar lebar: di HP bilah gelap di atas sudah memuat tombol
             menu dan avatar, jadi header ini dulu hanya memakan ±110 px layar. */}
-        <header className="sticky top-0 z-30 hidden flex-wrap print:!hidden items-center justify-between gap-3 border-b border-slate-200 bg-white px-8 py-4 shadow-[0_2px_15px_rgba(0,0,0,0.05)] lg:flex">
+        <header className="sticky top-0 z-30 hidden flex-wrap print:!hidden items-center justify-between gap-3 bg-paper/95 px-8 pb-3 pt-5 backdrop-blur lg:flex">
           <div>
             <h1 className="text-[1.05rem] font-semibold text-slate-600">
               Selamat Datang,{" "}
-              <span className="font-bold text-[--primary]">
+              <span className="font-bold text-navy-800">
                 {namaGuru ?? userEmail ?? "Admin"}
               </span>
             </h1>
@@ -354,7 +376,7 @@ export default function AdminShell({
             <Link
               href="/admin/profil"
               aria-label="Buka profil saya"
-              className="group flex items-center gap-2.5 rounded-full py-1 pl-1 pr-1 transition-colors hover:bg-slate-100 sm:pr-3"
+              className="group flex items-center gap-2.5 rounded-full bg-white py-1 pl-1 pr-1 shadow-sm ring-1 ring-slate-200/70 transition-colors hover:bg-navy-50 sm:pr-3"
             >
               <AvatarGuru
                 fotoUrl={fotoUrl}
@@ -383,7 +405,7 @@ export default function AdminShell({
         */}
         {jenjang ? (
           <div
-            className={`bg-gradient-to-r ${WARNA_JENJANG[jenjang]} px-4 py-2.5 text-white shadow-md print:hidden sm:px-8 sm:py-3.5`}
+            className={`bg-gradient-to-r ${WARNA_JENJANG[jenjang]} px-4 py-2.5 text-white shadow-md print:hidden sm:px-8 sm:py-3.5 lg:mx-8 lg:mt-2 lg:rounded-2xl`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="flex items-center gap-2 font-serif text-[0.95rem] font-extrabold uppercase tracking-wide sm:gap-3 sm:text-xl">
@@ -410,7 +432,7 @@ export default function AdminShell({
             </div>
           </div>
         ) : (
-          <div className="bg-slate-600 px-5 py-3.5 text-white print:hidden sm:px-8">
+          <div className="bg-slate-600 px-5 py-3.5 text-white print:hidden sm:px-8 lg:mx-8 lg:mt-2 lg:rounded-2xl">
             <p className="font-serif text-lg font-bold uppercase">
               <i className="fas fa-circle-question mr-2" aria-hidden />
               Jenjang aktif tidak diketahui — coba keluar lalu login ulang.

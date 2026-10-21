@@ -12,6 +12,9 @@ import BadgeJenjang from "@/components/admin/BadgeJenjang";
 import DeleteMapelButton from "./DeleteMapelButton";
 import DeleteSoalButton from "./DeleteSoalButton";
 import SkorInline from "./SkorInline";
+import GeneratorSoalAi from "@/components/admin/AiSoal/GeneratorSoalAi";
+import { aiSiapJenjang } from "@/lib/ai/akses";
+import { getJenjangFromServerCookies } from "@/lib/jenjang-server";
 import {
   BarisStatistik,
   Info,
@@ -155,7 +158,7 @@ async function muatDataMapel(
  *    sebelumnya), jadi tetap ditampilkan apa pun jenjangnya — cukup
  *    dibawakan `jenjang` supaya mendarat di action yang benar.
  */
-function IsiHalamanMapel({
+async function IsiHalamanMapel({
   eventId,
   mapelId,
   data,
@@ -171,6 +174,19 @@ function IsiHalamanMapel({
   const { mapel, soalList, totalSkor, jumlahSudahSubmit, dampakHapusMapel } = data;
   const qs = jenjang ? `?jenjang=${jenjang}` : "";
   const adaSoal = soalList.length > 0;
+  const jenjangData = jenjang ?? getJenjangFromServerCookies();
+  const aiSiap = await aiSiapJenjang(jenjangData);
+  const generatorAi = (varian: "tombol" | "kartu") => (
+    <GeneratorSoalAi
+      eventId={eventId}
+      mapelId={mapelId}
+      mapelNama={mapel.nama}
+      jenjang={jenjang}
+      jenjangData={jenjangData}
+      aiSiap={aiSiap}
+      varian={varian}
+    />
+  );
 
   return (
     <div>
@@ -243,6 +259,7 @@ function IsiHalamanMapel({
               </>
             )}
 
+            {generatorAi("tombol")}
             <Link
               href={`/admin/event/${eventId}/mapel/${mapelId}/soal/baru${qs}`}
               className={TOMBOL_UTAMA}
@@ -317,6 +334,8 @@ function IsiHalamanMapel({
           lalu klik &quot;Hitung Ulang Nilai&quot; setelah selesai.
         </Info>
       )}
+
+      {!adaSoal && generatorAi("kartu")}
 
       {!adaSoal ? (
         <Kosong

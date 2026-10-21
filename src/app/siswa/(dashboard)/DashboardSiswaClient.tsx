@@ -220,7 +220,20 @@ export default function DashboardSiswaClient({
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <Sambutan
+        now={now}
+        ujianAktif={berlangsung.length}
+        tugasAktif={
+          tugasAktif.filter((t) => !pengumpulanByTugas[t.id]?.submitted_at).length
+        }
+        forumAktif={forumAktif.length}
+        selesai={
+          riwayat.filter((m) => submittedByMapel[m.id]).length +
+          tugasSelesai.filter((t) => pengumpulanByTugas[t.id]?.submitted_at).length
+        }
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-8">
           <section>
             <JudulSeksi ikon="fa-file-signature" warna="text-[--primary]">
@@ -230,7 +243,7 @@ export default function DashboardSiswaClient({
             {berlangsung.length === 0 ? (
               <div className="card-mewah px-5 py-12 text-center text-slate-500">
                 <i
-                  className="fas fa-mug-hot mb-4 block text-4xl opacity-40"
+                  className="fas fa-mug-hot mb-4 block text-4xl text-navy-300"
                   aria-hidden
                 />
                 <p className="text-[1.05rem] font-medium">
@@ -541,12 +554,12 @@ export default function DashboardSiswaClient({
             </div>
           </section>
 
-          <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50 p-5">
-            <p className="mb-2 text-[0.8rem] font-extrabold uppercase tracking-wide text-sky-700">
+          <div className="rounded-2xl border border-kuning/40 bg-kuning/10 p-5">
+            <p className="mb-2 text-[0.8rem] font-extrabold uppercase tracking-wide text-navy-800">
               <i className="fas fa-lightbulb mr-1.5 text-amber-500" aria-hidden />
               Tips
             </p>
-            <p className="text-[0.82rem] leading-relaxed text-sky-900">
+            <p className="text-[0.82rem] leading-relaxed text-ink/80">
               Halaman ini memakai jam server, bukan jam HP-mu — jadi kalau
               jam HP-mu sedikit meleset, kartu ujian dan tenggat tugas tetap
               muncul di waktu yang tepat tanpa perlu kamu atur ulang.
@@ -555,6 +568,74 @@ export default function DashboardSiswaClient({
         </aside>
       </div>
     </div>
+  );
+}
+
+/** Jam WIB dari `now` (yang sudah disetel ke jam server). */
+function sapaanWaktu(now: number): string {
+  const jam = (new Date(now).getUTCHours() + 7) % 24;
+  if (jam < 11) return "Selamat pagi";
+  if (jam < 15) return "Selamat siang";
+  if (jam < 18) return "Selamat sore";
+  return "Selamat malam";
+}
+
+/**
+ * Kartu sambutan di puncak dashboard: sapaan + empat angka ringkas.
+ *
+ * Dekorasinya cuma dua lingkaran CSS — tanpa gambar, tanpa animasi
+ * berulang — supaya tetap ringan di HP kelas bawah dan kuota siswa.
+ */
+function Sambutan({
+  now,
+  ujianAktif,
+  tugasAktif,
+  forumAktif,
+  selesai,
+}: {
+  now: number;
+  ujianAktif: number;
+  tugasAktif: number;
+  forumAktif: number;
+  selesai: number;
+}) {
+  const adaKerjaan = ujianAktif + tugasAktif > 0;
+  const angka = [
+    { label: "Ujian/Kuis", nilai: ujianAktif, ikon: "fa-file-signature", warna: "bg-kuning text-navy-900" },
+    { label: "Tugas", nilai: tugasAktif, ikon: "fa-file-arrow-up", warna: "bg-emerald-400 text-emerald-950" },
+    { label: "Forum", nilai: forumAktif, ikon: "fa-comments", warna: "bg-sky-300 text-sky-950" },
+    { label: "Selesai", nilai: selesai, ikon: "fa-circle-check", warna: "bg-white text-navy-800" },
+  ];
+
+  return (
+    <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-navy-700 via-navy-800 to-navy-950 p-5 text-white shadow-lg shadow-navy-900/20 sm:p-7">
+      <span className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-kuning/15" aria-hidden />
+      <span className="pointer-events-none absolute -bottom-16 right-24 h-36 w-36 rounded-full bg-white/5" aria-hidden />
+      <p className="relative text-sm font-semibold text-kuning">{sapaanWaktu(now)} 👋</p>
+      <h1 className="relative mt-1 font-serif text-xl font-extrabold leading-snug sm:text-2xl">
+        {adaKerjaan ? "Ada yang menunggu dikerjakan hari ini" : "Semua beres untuk saat ini"}
+      </h1>
+      <p className="relative mt-1 max-w-xl text-[0.82rem] text-navy-100/90">
+        {adaKerjaan
+          ? "Kerjakan yang paling dekat tenggatnya dulu. Jawaban tersimpan otomatis."
+          : "Halaman ini memperbarui diri sendiri saat jadwal berikutnya tiba."}
+      </p>
+      <div className="relative mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+        {angka.map((a) => (
+          <div key={a.label} className="flex items-center gap-2.5 rounded-2xl bg-white/10 px-3 py-2.5 ring-1 ring-white/10">
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm ${a.warna}`}>
+              <i className={`fas ${a.ikon}`} aria-hidden />
+            </span>
+            <span className="min-w-0 leading-tight">
+              <span className="block text-lg font-extrabold tabular-nums">{a.nilai}</span>
+              <span className="block truncate text-[0.68rem] font-semibold uppercase tracking-wide text-navy-100/80">
+                {a.label}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -569,9 +650,20 @@ function JudulSeksi({
 }) {
   return (
     <h2 className="mb-3.5 flex items-center gap-2.5 font-serif text-[1.05rem] font-bold text-ink">
-      <i className={`fas ${ikon} ${warna}`} aria-hidden />
+      <span className={`flex h-8 w-8 items-center justify-center rounded-xl bg-white text-sm shadow-sm ring-1 ring-slate-200/70 ${warna}`}>
+        <i className={`fas ${ikon}`} aria-hidden />
+      </span>
       {children}
     </h2>
+  );
+}
+
+/** Ubin ikon berwarna di kiri kartu — warna = jenis kegiatan. */
+function UbinIkon({ ikon, warna }: { ikon: string; warna: string }) {
+  return (
+    <span className={`hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-lg sm:flex ${warna}`}>
+      <i className={`fas ${ikon}`} aria-hidden />
+    </span>
   );
 }
 
@@ -585,11 +677,21 @@ function JudulSeksi({
 function MapelCard({ mapel }: { mapel: MapelRow }) {
   const label = labelKerjakan(mapel);
   return (
-    <div className="card-mewah flex flex-wrap items-center justify-between gap-4 border-l-4 border-l-[--primary] p-5">
-      <div className="min-w-0">
-        <p className="flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-400">
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">
+    <div className="card-mewah flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
+      <UbinIkon
+        ikon={label === "Kuis" ? "fa-bolt" : "fa-file-signature"}
+        warna={label === "Kuis" ? "bg-kuning/25 text-amber-700" : "bg-navy-50 text-navy-700"}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-400">
+          <span
+            className={`pil ${label === "Kuis" ? "bg-kuning/30 text-amber-800" : "bg-navy-700 text-white"}`}
+          >
             {label}
+          </span>
+          <span className="pil bg-rose-50 text-rose-600">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" aria-hidden />
+            Sedang dibuka
           </span>
           {mapel.event?.nama ?? "Event"}
         </p>
@@ -611,7 +713,9 @@ function MapelCard({ mapel }: { mapel: MapelRow }) {
         )}
       </div>
 
-      <TombolKerjakanUjian mapelId={mapel.id} />
+      <div className="[&>button]:w-full sm:[&>button]:w-auto">
+        <TombolKerjakanUjian mapelId={mapel.id} />
+      </div>
     </div>
   );
 }
@@ -641,20 +745,26 @@ function TugasCard({
   const sudahKumpul = Boolean(pengumpulan?.submitted_at);
 
   return (
-    <div
-      className={`card-mewah flex flex-wrap items-center justify-between gap-4 border-l-4 p-5 ${
-        sudahKumpul
-          ? "border-l-emerald-500"
-          : terlambat
-            ? "border-l-amber-500"
-            : "border-l-[--primary]"
-      }`}
-    >
-      <div className="min-w-0">
-        <p className="flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-400">
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">
-            Tugas
-          </span>
+    <div className="card-mewah flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
+      <UbinIkon
+        ikon={sudahKumpul ? "fa-circle-check" : "fa-file-arrow-up"}
+        warna={
+          sudahKumpul
+            ? "bg-emerald-50 text-emerald-600"
+            : terlambat
+              ? "bg-amber-50 text-amber-600"
+              : "bg-emerald-50 text-emerald-700"
+        }
+      />
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-400">
+          <span className="pil bg-emerald-600 text-white">Tugas</span>
+          {sudahKumpul && (
+            <span className="pil bg-emerald-50 text-emerald-700">Terkumpul</span>
+          )}
+          {!sudahKumpul && terlambat && (
+            <span className="pil bg-amber-50 text-amber-700">Terlambat</span>
+          )}
           {tugas.event?.nama ?? "Kegiatan"}
         </p>
         <p className="font-serif text-lg font-bold text-ink">{tugas.judul}</p>
@@ -691,8 +801,9 @@ function TugasCard({
 
       <Link
         href={`/siswa/tugas/${tugas.id}`}
-        className="rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-light"
+        className={sudahKumpul ? "btn-navy-outline w-full sm:w-auto" : "btn-navy w-full sm:w-auto"}
       >
+        <i className={`fas ${sudahKumpul ? "fa-eye" : "fa-pen"}`} aria-hidden />
         {sudahKumpul ? "Lihat" : "Kerjakan"}
       </Link>
     </div>
@@ -710,12 +821,11 @@ function ForumCard({ forum, now }: { forum: ForumRow; now: number }) {
   const sisaMs = new Date(forum.ditutup_at).getTime() - now;
 
   return (
-    <div className="card-mewah flex flex-wrap items-center justify-between gap-4 border-l-4 border-l-[--primary] p-5">
-      <div className="min-w-0">
+    <div className="card-mewah flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
+      <UbinIkon ikon="fa-comments" warna="bg-sky-50 text-sky-600" />
+      <div className="min-w-0 flex-1">
         <p className="flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-400">
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">
-            Forum
-          </span>
+          <span className="pil bg-sky-600 text-white">Forum</span>
         </p>
         <p className="font-serif text-lg font-bold text-ink">
           {forum.event?.nama ?? "Forum Diskusi"}
@@ -729,11 +839,9 @@ function ForumCard({ forum, now }: { forum: ForumRow; now: number }) {
         </p>
       </div>
 
-      <Link
-        href={`/siswa/forum/${forum.id}`}
-        className="rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-light"
-      >
-        Buka
+      <Link href={`/siswa/forum/${forum.id}`} className="btn-navy w-full sm:w-auto">
+        <i className="fas fa-comment-dots" aria-hidden />
+        Buka Forum
       </Link>
     </div>
   );

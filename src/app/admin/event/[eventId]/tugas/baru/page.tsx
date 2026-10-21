@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { jenisEventValid, pakaiMesinTugas, labelJenisEvent, type JenisEvent } from "@/lib/jenis-event";
 import { untukInputDatetime } from "@/lib/tugas";
 import TugasForm, { type KelasPilihan } from "../TugasForm";
+import { aiSiapJenjang } from "@/lib/ai/akses";
 
 /**
  * Buat tugas baru di dalam sebuah event berjenis assignment.
@@ -88,6 +89,7 @@ export default async function TugasBaruPage({
       <Remah eventId={event.id} nama={event.nama} />
       <h1 className="mb-6 font-serif text-2xl text-ink">Tugas Baru</h1>
       <TugasForm
+        aiSiap={await aiSiapJenjang()}
         eventId={event.id}
         kelasList={kelas}
         awal={{

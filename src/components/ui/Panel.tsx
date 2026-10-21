@@ -69,12 +69,12 @@ export function KepalaHalaman({
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 items-start gap-3.5">
         {ikon && (
-          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white shadow-lg shadow-blue-600/25">
+          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-navy-600 to-navy-800 text-white shadow-lg shadow-navy-800/25">
             <i className={`fas ${ikon}`} aria-hidden />
           </span>
         )}
         <div className="min-w-0">
-          <h1 className="font-serif text-[1.6rem] font-bold leading-tight text-ink">
+          <h1 className="font-serif text-[1.6rem] font-extrabold leading-tight tracking-tight text-navy-900">
             {judul}
           </h1>
           {keterangan && (
@@ -108,7 +108,7 @@ export function Statistik({
   catatan?: string;
 }) {
   const skema = {
-    biru: "from-blue-500/10 to-blue-500/[0.03] text-blue-600 border-blue-200/70",
+    biru: "from-navy-500/10 to-navy-500/[0.03] text-navy-700 border-navy-200/70",
     hijau:
       "from-emerald-500/10 to-emerald-500/[0.03] text-emerald-600 border-emerald-200/70",
     emas: "from-amber-500/10 to-amber-500/[0.03] text-amber-600 border-amber-200/70",
@@ -208,7 +208,7 @@ export function Info({
   children: React.ReactNode;
 }) {
   const skema = {
-    info: "border-blue-200 bg-blue-50 text-blue-900",
+    info: "border-navy-200 bg-navy-50 text-navy-900",
     peringatan: "border-amber-200 bg-amber-50 text-amber-900",
     sukses: "border-emerald-200 bg-emerald-50 text-emerald-900",
   }[nada];
@@ -230,7 +230,7 @@ export function Info({
 
 /** Kelas tombol, sebagai konstanta supaya bentuknya sama di semua halaman. */
 export const TOMBOL_UTAMA =
-  "inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#3b82f6] to-[#2563eb] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-600/30 disabled:translate-y-0 disabled:opacity-50 disabled:shadow-none";
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-navy-600 to-navy-800 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-navy-800/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-navy-800/30 disabled:translate-y-0 disabled:opacity-50 disabled:shadow-none";
 
 export const TOMBOL_BIASA =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-ink disabled:opacity-50";

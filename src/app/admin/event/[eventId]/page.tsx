@@ -555,7 +555,7 @@ function BagianMapel({
               <Link
                 key={m.id}
                 href={`/admin/event/${eventId}/mapel/${m.id}${suffix}`}
-                className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-blue-600/10"
+                className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-navy-800/10"
               >
                 <div className="mb-3 flex items-start justify-between gap-2">
                   <h2 className="min-w-0 font-serif text-lg font-bold leading-snug text-ink">
@@ -760,7 +760,7 @@ function KartuTugas({
   return (
     <Link
       href={`/admin/event/${eventId}/tugas/${tugas.id}${suffix}`}
-      className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-blue-600/10"
+      className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-navy-800/10"
     >
       <div className="mb-3 flex items-start justify-between gap-2">
         <h2 className="min-w-0 font-serif text-lg font-bold leading-snug text-ink">
@@ -944,7 +944,7 @@ function KartuKelasForum({
   return (
     <Link
       href={`/admin/event/${eventId}/forum/${kelas.kelasId}${suffix}`}
-      className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-blue-600/10"
+      className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-navy-800/10"
     >
       <div className="mb-3 flex items-start justify-between gap-2">
         <h2 className="min-w-0 font-serif text-lg font-bold leading-snug text-ink">

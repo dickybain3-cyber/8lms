@@ -88,7 +88,7 @@ export function LayarAntrian({ tahap }: { tahap: string }) {
       <div className="w-full max-w-[320px] animasi-muncul rounded-3xl bg-white px-7 py-9 text-center shadow-2xl">
         <div className="relative mx-auto mb-6 h-16 w-16">
           <span className="absolute inset-0 animate-ping rounded-full bg-blue-500/20" />
-          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-2xl text-white shadow-lg shadow-blue-600/30">
+          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-gradient-to-br from-navy-600 to-navy-800 text-2xl text-white shadow-lg shadow-navy-800/30">
             <i className="fas fa-circle-notch fa-spin" aria-hidden />
           </span>
         </div>
@@ -162,7 +162,7 @@ export function SapaanSukses({
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/70 px-5 backdrop-blur-sm">
       <div className="w-full max-w-[340px] animasi-muncul overflow-hidden rounded-3xl bg-white text-center shadow-2xl">
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#3b82f6] via-[#2563eb] to-[#1d4ed8] px-6 pb-12 pt-8">
+        <div className="relative overflow-hidden bg-gradient-to-br from-navy-600 via-navy-700 to-navy-900 px-6 pb-12 pt-8">
           {/* Dua lingkaran dekoratif setengah-transparan — pemanis murni
               CSS, tanpa gambar yang perlu diunduh, supaya kartunya terasa
               lebih "berkelas" tanpa menambah beban halaman login yang
