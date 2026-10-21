@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { analisisButir, nilai100, type ButirHasil } from "@/lib/statistik";
 import type { Jenjang } from "@/lib/jenjang";
+import { rincianJawaban, type RincianJawaban } from "@/lib/analisis-jawaban";
 
 /**
  * Pemuat data halaman Statistik per kegiatan.
@@ -174,5 +175,51 @@ export async function muatAnalisisButirMapel(jenjang: Jenjang, mapelId: string):
     );
   } catch (e) {
     return "Gagal memuat analisis butir soal: " + (e instanceof Error ? e.message : "kesalahan tidak diketahui");
+  }
+}
+
+/**
+ * Sebaran jawaban, daya pembeda, dan dugaan miskonsepsi per butir — lihat
+ * `rincianJawaban()` di analisis-jawaban.ts. Dimuat terpisah dari
+ * `muatAnalisisButirMapel` karena butuh `konten_jsonb` (opsi & kunci) dan
+ * total skor tiap siswa, yang tidak dibutuhkan halaman lain.
+ */
+export async function muatRincianJawabanMapel(
+  jenjang: Jenjang,
+  mapelId: string
+): Promise<RincianJawaban[] | string> {
+  const db = createAdminClient(jenjang);
+  try {
+    const [soal, jawaban, nilai] = await Promise.all([
+      ambilSemua<{ id: string; urutan: number; tipe: string; skor: number; konten_jsonb: Record<string, unknown> | null }>((a, b) =>
+        db.from("soal").select("id, urutan, tipe, skor, konten_jsonb").eq("mapel_id", mapelId).range(a, b)
+      ),
+      ambilSemua<{ siswa_id: string; jawaban_jsonb: Record<string, unknown> | null }>((a, b) =>
+        db.from("jawaban_siswa").select("siswa_id, jawaban_jsonb").eq("mapel_id", mapelId).not("submitted_at", "is", null).range(a, b)
+      ),
+      ambilSemua<{ siswa_id: string; detail_jsonb: Record<string, unknown> | null; total_skor: number | null }>((a, b) =>
+        db.from("nilai").select("siswa_id, detail_jsonb, total_skor").eq("mapel_id", mapelId).range(a, b)
+      ),
+    ]);
+    const nilaiPer = new Map(nilai.map((n) => [n.siswa_id, n]));
+    return rincianJawaban(
+      soal.map((s) => ({
+        id: s.id,
+        urutan: Number(s.urutan),
+        tipe: s.tipe,
+        skor: Number(s.skor),
+        konten: s.konten_jsonb ?? {},
+      })),
+      jawaban.map((j) => {
+        const nv = nilaiPer.get(j.siswa_id);
+        return {
+          jawaban: j.jawaban_jsonb ?? {},
+          detail: nv?.detail_jsonb ?? {},
+          totalSkor: Number(nv?.total_skor ?? 0) || 0,
+        };
+      })
+    );
+  } catch (e) {
+    return "Gagal memuat sebaran jawaban: " + (e instanceof Error ? e.message : "kesalahan tidak diketahui");
   }
 }

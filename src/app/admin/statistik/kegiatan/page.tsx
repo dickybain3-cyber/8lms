@@ -3,7 +3,9 @@ import Link from "next/link";
 import { getSesiGuru, pastikanBolehKeJenjang } from "@/lib/admin-guard";
 import { JENJANG_LABEL, parseJenjang, type Jenjang } from "@/lib/jenjang";
 import { histogram, predikat, ringkas, ringkasPerKelompok, bulat1 } from "@/lib/statistik";
-import { muatAnalisisButirMapel, muatDataKegiatan, type BarisSiswa } from "@/lib/statistik-kegiatan";
+import { muatAnalisisButirMapel, muatDataKegiatan, muatRincianJawabanMapel, type BarisSiswa } from "@/lib/statistik-kegiatan";
+import PanelJawaban, { GAYA_DAYA_BEDA } from "@/components/admin/Statistik/PanelJawaban";
+import { LABEL_DAYA_BEDA } from "@/lib/analisis-jawaban";
 import { Info, Remah } from "@/components/ui/Panel";
 import BadgeJenjang from "@/components/admin/BadgeJenjang";
 import {
@@ -115,7 +117,14 @@ export default async function StatistikKegiatanPage({ searchParams }: { searchPa
   const rankNilai = new Map([...berNilai].sort((a, b) => b.n - a.n).map((x, i) => [x.s.siswaId, i + 1]));
   const belum = siswaSaring.length - berNilai.length;
 
-  const butir = mapelTerpilih ? await muatAnalisisButirMapel(jenjang, mapelTerpilih.id) : null;
+  const [butir, rincianMentah] = mapelTerpilih
+    ? await Promise.all([
+        muatAnalisisButirMapel(jenjang, mapelTerpilih.id),
+        muatRincianJawabanMapel(jenjang, mapelTerpilih.id),
+      ])
+    : [null, null];
+  const rincian = Array.isArray(rincianMentah) ? rincianMentah : [];
+  const rincianPer = new Map(rincian.map((r) => [r.soalId, r]));
   const hitungKategori = Array.isArray(butir)
     ? butir.reduce(
         (a, b) => {
@@ -255,7 +264,8 @@ export default async function StatistikKegiatanPage({ searchParams }: { searchPa
                             <th className="py-2 pr-2 text-right">Benar</th>
                             <th className="py-2 pr-2 text-right">Sebagian</th>
                             <th className="py-2 pr-2 text-right">Salah</th>
-                            <th className="py-2 text-right">Kosong</th>
+                            <th className="py-2 pr-2 text-right">Kosong</th>
+                            <th className="py-2 text-right">Daya beda</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -276,13 +286,53 @@ export default async function StatistikKegiatanPage({ searchParams }: { searchPa
                                 <td className="py-2 pr-2 text-right tabular-nums">{b.benar}</td>
                                 <td className="py-2 pr-2 text-right tabular-nums">{b.sebagian}</td>
                                 <td className="py-2 pr-2 text-right tabular-nums">{b.salah}</td>
-                                <td className="py-2 text-right tabular-nums">{b.kosong}</td>
+                                <td className="py-2 pr-2 text-right tabular-nums">{b.kosong}</td>
+                                <td className="py-2 text-right">
+                                  {(() => {
+                                    const r = rincianPer.get(b.soalId);
+                                    if (!r || r.dayaBeda == null || !r.kategoriDayaBeda) return <span className="text-slate-400">—</span>;
+                                    return (
+                                      <span title={LABEL_DAYA_BEDA[r.kategoriDayaBeda]} className={`rounded-full px-2 py-0.5 text-[0.7rem] font-semibold tabular-nums ${GAYA_DAYA_BEDA[r.kategoriDayaBeda]}`}>
+                                        {r.dayaBeda.toFixed(2)}
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
                               </tr>
                             );
                           })}
                         </tbody>
                       </table>
                     </div>
+
+                    {rincian.length > 0 && (
+                      <div className="mt-6">
+                        <h3 className="mb-1 font-serif text-base font-bold text-navy-900">
+                          Sebaran jawaban &amp; dugaan miskonsepsi
+                        </h3>
+                        <p className="mb-3 text-[0.75rem] text-slate-500">
+                          Jawaban salah yang dipilih ≥ 20% siswa ditandai. Soal bertanda dibuka otomatis.
+                          Daya beda: ≥ 0,40 sangat baik · 0,30–0,39 baik · 0,20–0,29 cukup · &lt; 0,20 jelek · negatif = cek kunci.
+                        </p>
+                        <div className="space-y-2">
+                          {rincian.map((r) => {
+                            const tandai = !!r.miskonsepsi || r.kategoriDayaBeda === "negatif";
+                            return (
+                              <details key={r.soalId} open={tandai} className={`rounded-xl border bg-white px-3 py-2 ${tandai ? "border-amber-200" : "border-slate-200"}`}>
+                                <summary className="cursor-pointer text-[0.8rem] font-semibold text-ink">
+                                  {tandai && <i className="fas fa-triangle-exclamation mr-1.5 text-amber-500" aria-hidden />}
+                                  Soal no {r.urutan}
+                                  <span className="ml-2 font-normal text-slate-500">{r.pertanyaan}</span>
+                                </summary>
+                                <div className="pt-2">
+                                  <PanelJawaban r={r} />
+                                </div>
+                              </details>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <p className="text-sm text-slate-500">Belum ada jawaban yang dikumpulkan untuk mapel ini.</p>

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
+import { LABEL_DAYA_BEDA, type RincianJawaban } from "@/lib/analisis-jawaban";
+import PanelJawaban, { GAYA_DAYA_BEDA } from "./PanelJawaban";
 import { muatAnalisisButir } from "@/app/admin/statistik/actions";
 import { unduhExcelAnalisisButir } from "@/lib/excel";
 import type { Jenjang } from "@/lib/jenjang";
@@ -53,10 +55,20 @@ export default function AnalisisButir({
     | { status: "idle" }
     | { status: "loading" }
     | { status: "error"; pesan: string }
-    | { status: "loaded"; data: AnalisisButirSoal[] }
+    | { status: "loaded"; data: AnalisisButirSoal[]; rincian: RincianJawaban[] }
   >({ status: "idle" });
   const [mengunduh, setMengunduh] = useState(false);
   const [pesanUnduh, setPesanUnduh] = useState<string | null>(null);
+  const [terbuka, setTerbuka] = useState<Set<string>>(new Set());
+
+  function bukaTutup(id: string, paksaBuka = false) {
+    setTerbuka((s) => {
+      const b = new Set(s);
+      if (b.has(id) && !paksaBuka) b.delete(id);
+      else b.add(id);
+      return b;
+    });
+  }
 
   async function muat() {
     setState({ status: "loading" });
@@ -65,7 +77,7 @@ export default function AnalisisButir({
       setState({ status: "error", pesan: hasil.error });
       return;
     }
-    setState({ status: "loaded", data: hasil.data });
+    setState({ status: "loaded", data: hasil.data, rincian: hasil.rincian });
   }
 
   async function unduh(data: AnalisisButirSoal[]) {
@@ -120,7 +132,9 @@ export default function AnalisisButir({
     );
   }
 
-  const { data } = state;
+  const { data, rincian } = state;
+  const rincianPer = new Map(rincian.map((r) => [r.soalId, r]));
+  const temuan = rincian.filter((r) => r.miskonsepsi || r.kategoriDayaBeda === "negatif");
 
   if (data.length === 0) {
     return (
@@ -163,8 +177,34 @@ export default function AnalisisButir({
       )}
       {pesanUnduh && <p className="mb-2 text-xs text-danger">{pesanUnduh}</p>}
 
+      {temuan.length > 0 && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="mb-1.5 text-xs font-bold text-amber-900">
+            <i className="fas fa-magnifying-glass-chart mr-1.5" aria-hidden />
+            Temuan yang perlu dibahas ({temuan.length} soal)
+          </p>
+          <ul className="space-y-1 text-[0.75rem] leading-snug text-amber-900">
+            {temuan.slice(0, 8).map((r) => (
+              <li key={r.soalId}>
+                <button
+                  type="button"
+                  onClick={() => bukaTutup(r.soalId, true)}
+                  className="mr-1.5 rounded bg-amber-200/70 px-1.5 font-bold hover:bg-amber-300"
+                >
+                  No {r.urutan}
+                </button>
+                {r.kategoriDayaBeda === "negatif"
+                  ? "Daya pembeda negatif: siswa bernilai tinggi justru lebih banyak salah. Cek kunci jawaban. "
+                  : ""}
+                {r.miskonsepsi}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-lg border border-ink/10 bg-white">
-        <table className="w-full min-w-[640px] text-left text-xs">
+        <table className="w-full min-w-[720px] text-left text-xs">
           <thead>
             <tr className="border-b border-ink/10 uppercase tracking-wide text-ink/40">
               <th className="px-3 py-2 font-medium">No</th>
@@ -176,14 +216,19 @@ export default function AnalisisButir({
               <th className="px-2 py-2 text-center font-medium">Rata skor</th>
               <th className="px-2 py-2 text-center font-medium">% Benar</th>
               <th className="px-3 py-2 text-center font-medium">Kategori</th>
+              <th className="px-2 py-2 text-center font-medium" title="Selisih proporsi benar kelompok atas (27%) dan bawah (27%)">
+                Daya beda
+              </th>
+              <th className="px-2 py-2 text-center font-medium">Jawaban</th>
             </tr>
           </thead>
           <tbody>
-            {data.map((d) => (
-              <tr
-                key={d.soal_id}
-                className="border-b border-ink/5 last:border-0"
-              >
+            {data.map((d) => {
+              const r = rincianPer.get(d.soal_id);
+              const buka = terbuka.has(d.soal_id);
+              return (
+              <Fragment key={d.soal_id}>
+              <tr className="border-b border-ink/5 last:border-0">
                 <td className="px-3 py-2 font-medium text-ink">{d.urutan}</td>
                 <td className="px-3 py-2 text-ink/70">
                   {LABEL_TIPE[d.tipe] ?? d.tipe}
@@ -208,15 +253,56 @@ export default function AnalisisButir({
                     {d.kategori}
                   </span>
                 </td>
+                <td className="px-2 py-2 text-center">
+                  {r?.dayaBeda == null ? (
+                    <span className="text-ink/30">–</span>
+                  ) : (
+                    <span
+                      title={r.kategoriDayaBeda ? LABEL_DAYA_BEDA[r.kategoriDayaBeda] : ""}
+                      className={`rounded-full px-2 py-0.5 text-[0.7rem] font-semibold ${
+                        GAYA_DAYA_BEDA[r.kategoriDayaBeda ?? "jelek"]
+                      }`}
+                    >
+                      {r.dayaBeda.toFixed(2)}
+                    </span>
+                  )}
+                </td>
+                <td className="px-2 py-2 text-center">
+                  {r && (
+                    <button
+                      type="button"
+                      onClick={() => bukaTutup(d.soal_id)}
+                      aria-expanded={buka}
+                      className={`rounded-md px-2 py-1 text-[0.7rem] font-semibold transition-colors ${
+                        buka ? "bg-navy-800 text-white" : "bg-navy-50 text-navy-700 hover:bg-navy-100"
+                      }`}
+                    >
+                      {r.miskonsepsi && <i className="fas fa-triangle-exclamation mr-1 text-amber-500" aria-hidden />}
+                      {buka ? "Tutup" : "Lihat"}
+                    </button>
+                  )}
+                </td>
               </tr>
-            ))}
+              {buka && r && (
+                <tr className="border-b border-ink/5 bg-slate-50/70">
+                  <td colSpan={11} className="px-3 py-3">
+                    <PanelJawaban r={r} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      <p className="mt-2 text-[0.7rem] text-ink/40">
+      <p className="mt-2 text-[0.7rem] leading-relaxed text-ink/40">
         Kategori mengikuti persentase siswa yang menjawab benar penuh: lebih
-        dari 70% mudah, 30–70% sedang, kurang dari 30% sulit.
+        dari 70% mudah, 30–70% sedang, kurang dari 30% sulit. Daya beda:
+        ≥ 0,40 sangat baik · 0,30–0,39 baik · 0,20–0,29 cukup · &lt; 0,20
+        jelek · negatif = cek kunci. Klik &ldquo;Lihat&rdquo; untuk sebaran
+        jawaban siswa.
       </p>
     </div>
   );

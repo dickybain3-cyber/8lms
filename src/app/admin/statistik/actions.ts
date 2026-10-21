@@ -5,7 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSesiGuru, pastikanBolehKeJenjang } from "@/lib/admin-guard";
 import { isJenjangValid, type Jenjang } from "@/lib/jenjang";
 import type { AnalisisButirSoal, DistribusiNilai } from "@/types";
-import { muatAnalisisButirMapel } from "@/lib/statistik-kegiatan";
+import { muatAnalisisButirMapel, muatRincianJawabanMapel } from "@/lib/statistik-kegiatan";
+import type { RincianJawaban } from "@/lib/analisis-jawaban";
 
 /**
  * Union dibedakan lewat field literal `ok` (bukan lewat `error: string |
@@ -77,7 +78,7 @@ export async function muatDistribusiNilai(
 
 export type HasilAnalisisButir =
   | { ok: false; error: string }
-  | { ok: true; data: AnalisisButirSoal[] };
+  | { ok: true; data: AnalisisButirSoal[]; rincian: RincianJawaban[] };
 
 /**
  * Memuat analisis butir soal satu mapel (RPC `get_analisis_butir_soal`,
@@ -108,8 +109,13 @@ export async function muatAnalisisButir(
 
   // Dihitung di aplikasi: fungsi SQL get_analisis_butir_soal (migrasi 0012)
   // belum terpasang di database mana pun, jadi versi RPC selalu gagal.
-  const hasil = await muatAnalisisButirMapel(jenjang, mapelId);
+  const [hasil, rincianMentah] = await Promise.all([
+    muatAnalisisButirMapel(jenjang, mapelId),
+    muatRincianJawabanMapel(jenjang, mapelId),
+  ]);
   if (typeof hasil === "string") return { ok: false, error: hasil };
+  // Sebaran jawaban gagal dimuat tidak menggagalkan tabel utama.
+  const rincian = typeof rincianMentah === "string" ? [] : rincianMentah;
   const baris: AnalisisButirSoal[] = hasil.map((b) => ({
     soal_id: b.soalId,
     urutan: b.urutan,
@@ -124,5 +130,5 @@ export async function muatAnalisisButir(
     persen_benar: b.persenBenar,
     kategori: b.kategori ?? "belum ada data",
   }));
-  return { ok: true, data: baris };
+  return { ok: true, data: baris, rincian };
 }

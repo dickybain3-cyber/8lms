@@ -86,6 +86,15 @@ const MENU: (MenuTunggal | MenuGrup)[] = [
     ikon: "fa-chair",
     adminSaja: true,
   },
+  // Penghapusan permanen kegiatan/data siswa — admin saja. Halamannya
+  // sendiri juga menolak non-admin (menu ini hanya kerapian).
+  {
+    jenis: "tunggal",
+    href: "/admin/bersih-data",
+    label: "Bersih-bersih Data",
+    ikon: "fa-broom",
+    adminSaja: true,
+  },
   {
     jenis: "tunggal",
     href: "/admin/log",
