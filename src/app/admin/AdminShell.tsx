@@ -348,96 +348,112 @@ export default function AdminShell({
         </div>
       </aside>
 
-      {/* Isi halaman. `lg:ml-[260px]` mengimbangi sidebar yang fixed. */}
-      <div className="lg:ml-[256px] print:ml-0">
-        {/* Hanya layar lebar: di HP bilah gelap di atas sudah memuat tombol
-            menu dan avatar, jadi header ini dulu hanya memakan ±110 px layar. */}
-        <header className="sticky top-0 z-30 hidden flex-wrap print:!hidden items-center justify-between gap-3 bg-paper/95 px-6 pb-2 pt-3 backdrop-blur lg:flex">
-          <div>
-            <h1 className="text-[0.95rem] font-semibold text-slate-600">
-              Selamat Datang,{" "}
-              <span className="font-bold text-navy-800">
-                {namaGuru ?? userEmail ?? "Admin"}
-              </span>
-            </h1>
-            <p className="text-[0.72rem] text-slate-400">
-              Panel pengelolaan {SEKOLAH.namaPendek}
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            {/*
-              Foto profil di pojok kanan atas, tempat orang biasanya mencarinya.
-              Seluruh blok adalah tautan ke /admin/profil. Teks peran disembunyikan
-              di layar sempit — namanya sudah ada di sapaan sebelah kiri.
-            */}
-            <Link
-              href="/admin/profil"
-              aria-label="Buka profil saya"
-              className="group flex items-center gap-2.5 rounded-full bg-white py-1 pl-1 pr-1 shadow-sm ring-1 ring-slate-200/70 transition-colors hover:bg-navy-50 sm:pr-3"
-            >
-              <AvatarGuru
-                fotoUrl={fotoUrl}
-                nama={namaGuru}
-                ukuran={40}
-                className="ring-2 ring-slate-100 transition-shadow group-hover:ring-[--accent]"
-              />
-              <span className="hidden text-left leading-tight sm:block">
-                <span className="block text-[0.8rem] font-semibold text-slate-700">
-                  Profil saya
-                </span>
-                <span className="block text-[0.68rem] text-slate-400">
-                  {isAdmin ? "Administrator" : "Guru"}
-                </span>
-              </span>
-            </Link>
-          </div>
-        </header>
-
+      {/*
+        Isi halaman. Sidebar mengambang di left-3 selebar 240 px, jadi
+        tepi kanannya 252 px; bilah atas & isi memakai jarak 12 px (px-3)
+        yang SAMA dengan jarak sidebar ke tepi layar — itu yang membuat
+        sidebar dan halaman terbaca sebagai satu bingkai.
+      */}
+      <div className="lg:ml-[252px] print:ml-0">
         {/*
-          Banner jenjang aktif. Ditaruh DI LUAR <main> dan di atas semua
-          isi halaman, sengaja tidak bisa di-scroll lewat: kesalahan yang
-          mau dicegah di sini ("mengetik data kelas 8 ke database kelas
-          7") terjadi justru saat orang sudah asyik mengisi form di
-          bawah, bukan saat dia baru membuka halaman.
+          ── Bilah atas layar lebar ──
+          Satu kartu putih sejajar puncak sidebar, berisi tiga hal yang dulu
+          memakan tiga baris (sapaan, banner jenjang, profil). Penanda
+          jenjang tetap MENCOLOK (warna hijau/biru/jingga per jenjang) dan
+          kini malah ikut lengket di atas saat menggulir — kesalahan yang
+          mau dicegah ("mengetik data kelas 8 ke database kelas 7") terjadi
+          justru saat orang sudah asyik mengisi form di bawah.
         */}
-        {jenjang ? (
-          <div
-            className={`bg-gradient-to-r ${WARNA_JENJANG[jenjang]} px-4 py-2 text-white shadow-md print:hidden sm:px-5 lg:mx-6 lg:mt-1 lg:rounded-2xl`}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="flex items-center gap-2 font-serif text-[0.9rem] font-extrabold uppercase tracking-wide sm:gap-2.5 sm:text-base">
-                <i className="fas fa-triangle-exclamation text-white/80" aria-hidden />
-                {isAdmin ? "Sesi login" : "Sedang mengelola"}:{" "}
-                {JENJANG_LABEL[jenjang]}
+        <header className="sticky top-0 z-30 hidden bg-paper/95 px-3 pt-3 print:!hidden lg:block">
+          <div className="flex items-center gap-3 rounded-2xl bg-white px-3 py-2 shadow-sm ring-1 ring-slate-200/70">
+            {jenjang ? (
+              <span
+                className={`inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r ${WARNA_JENJANG[jenjang]} px-3 py-2 text-[0.78rem] font-extrabold uppercase tracking-wide text-white shadow-sm`}
+              >
+                <i className="fas fa-database text-white/80" aria-hidden />
+                {isAdmin ? "Sesi" : "Mengelola"}: {JENJANG_LABEL[jenjang]}
+              </span>
+            ) : (
+              <span className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-slate-500 px-3 py-2 text-[0.78rem] font-bold text-white">
+                <i className="fas fa-circle-question" aria-hidden />
+                Jenjang tidak diketahui — login ulang
+              </span>
+            )}
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-[0.85rem] font-semibold text-slate-600">
+                Selamat datang,{" "}
+                <span className="font-bold text-navy-800">
+                  {namaGuru ?? userEmail ?? "Admin"}
+                </span>
               </p>
-              {isAdmin ? (
+              <p className="truncate text-[0.68rem] text-slate-400">
+                {jenjang
+                  ? `Data yang kamu simpan masuk ke database ${JENJANG_LABEL[jenjang]}`
+                  : `Panel pengelolaan ${SEKOLAH.namaPendek}`}
+              </p>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              {isAdmin && jenjang && (
                 /*
                   Suspense wajib: JenjangSwitcherGlobal memakai
                   useSearchParams(), dan Next.js mensyaratkan pembacanya
-                  berada di dalam batas Suspense. Tanpa ini, `next build`
-                  gagal pada halaman admin yang bisa dirender statis.
+                  berada di dalam batas Suspense.
                 */
+                <Suspense fallback={null}>
+                  <JenjangSwitcherGlobal jenjangSesi={jenjang} terang />
+                </Suspense>
+              )}
+              <Link
+                href="/admin/profil"
+                aria-label="Buka profil saya"
+                className="group flex items-center gap-2 rounded-full py-0.5 pl-0.5 pr-3 transition-colors hover:bg-navy-50"
+              >
+                <AvatarGuru
+                  fotoUrl={fotoUrl}
+                  nama={namaGuru}
+                  ukuran={34}
+                  className="ring-2 ring-slate-100 transition-shadow group-hover:ring-[--accent]"
+                />
+                <span className="text-left leading-tight">
+                  <span className="block text-[0.78rem] font-semibold text-slate-700">
+                    Profil saya
+                  </span>
+                  <span className="block text-[0.66rem] text-slate-400">
+                    {isAdmin ? "Administrator" : "Guru"}
+                  </span>
+                </span>
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        {/* HP & tablet: penanda jenjang berupa pita tipis di bawah bilah biru. */}
+        {jenjang ? (
+          <div
+            className={`bg-gradient-to-r ${WARNA_JENJANG[jenjang]} px-4 py-2 text-white shadow-md print:hidden lg:hidden`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-2 font-serif text-[0.85rem] font-extrabold uppercase tracking-wide">
+                <i className="fas fa-database text-white/80" aria-hidden />
+                {isAdmin ? "Sesi login" : "Sedang mengelola"}: {JENJANG_LABEL[jenjang]}
+              </p>
+              {isAdmin && (
                 <Suspense fallback={null}>
                   <JenjangSwitcherGlobal jenjangSesi={jenjang} />
                 </Suspense>
-              ) : (
-                <p className="text-[0.75rem] font-medium text-white/85">
-                  Semua data yang kamu lihat &amp; simpan di sini masuk ke
-                  database {JENJANG_LABEL[jenjang]}.
-                </p>
               )}
             </div>
           </div>
         ) : (
-          <div className="bg-slate-600 px-5 py-3.5 text-white print:hidden sm:px-5 lg:mx-6 lg:mt-1 lg:rounded-2xl">
-            <p className="font-serif text-lg font-bold uppercase">
-              <i className="fas fa-circle-question mr-2" aria-hidden />
-              Jenjang aktif tidak diketahui — coba keluar lalu login ulang.
-            </p>
+          <div className="bg-slate-600 px-4 py-2 text-sm font-bold text-white print:hidden lg:hidden">
+            <i className="fas fa-circle-question mr-2" aria-hidden />
+            Jenjang aktif tidak diketahui — coba keluar lalu login ulang.
           </div>
         )}
 
-        <main className="min-w-0 p-4 sm:p-6 print:p-0">{children}</main>
+        <main className="min-w-0 p-4 sm:p-5 lg:px-3 lg:pb-4 lg:pt-4 print:p-0">
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -88,8 +88,12 @@ const config: Config = {
         // Variabel CSS-nya tetap --font-serif/--font-sans supaya kelas
         // `font-serif` yang sudah tersebar di banyak file tidak perlu
         // diganti; isinya sekarang Poppins (judul) & Inter (teks).
-        serif: ["var(--font-serif)", "Poppins", "sans-serif"],
-        sans: ["var(--font-sans)", "Inter", "sans-serif"],
+        // Fallback DI DALAM var(): kalau variabel font tidak terdefinisi
+        // (pernah terjadi di build Vercel: hash kelas font di HTML beda
+        // dengan di CSS), deklarasi tetap sah dan jatuh ke font sistem
+        // sans — bukan Times New Roman bawaan browser.
+        serif: ["var(--font-serif, Poppins)", "Poppins", "ui-sans-serif", "system-ui", "Segoe UI", "Roboto", "Arial", "sans-serif"],
+        sans: ["var(--font-sans, Inter)", "Inter", "ui-sans-serif", "system-ui", "Segoe UI", "Roboto", "Arial", "sans-serif"],
       },
       boxShadow: {
         card: "0 10px 25px -5px rgba(0,0,0,0.05), 0 8px 10px -6px rgba(0,0,0,0.01)",

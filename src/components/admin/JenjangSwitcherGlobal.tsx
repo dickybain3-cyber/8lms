@@ -58,11 +58,14 @@ function tujuanPindah(pathname: string, jenjang: Jenjang): string | null {
 
 export default function JenjangSwitcherGlobal({
   jenjangSesi,
+  terang = false,
 }: {
   /** Jenjang tempat admin LOGIN. Dipakai sebagai nilai bawaan kalau URL
    *  belum punya `?jenjang=`, supaya admin yang login di kelas 9 tidak
    *  tiba-tiba ditandai sedang melihat kelas 7. */
   jenjangSesi: Jenjang | null;
+  /** true = dipasang di atas latar putih (bilah atas admin). */
+  terang?: boolean;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -74,10 +77,10 @@ export default function JenjangSwitcherGlobal({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[0.7rem] font-bold uppercase tracking-wide text-white/70">
+      <span className={`text-[0.7rem] font-bold uppercase tracking-wide ${terang ? "text-slate-400" : "text-white/70"}`}>
         Kelola data
       </span>
-      <div className="inline-flex items-center gap-1 rounded-xl bg-black/20 p-1">
+      <div className={`inline-flex items-center gap-1 rounded-xl p-1 ${terang ? "bg-slate-100" : "bg-black/20"}`}>
         {JENJANG_LIST.map((j) => {
           const aktif = j === jenjangAktif;
           const href = tujuanPindah(pathname, j) as string;
@@ -88,8 +91,12 @@ export default function JenjangSwitcherGlobal({
               aria-current={aktif ? "page" : undefined}
               className={`rounded-lg px-2.5 py-1 text-[0.8rem] font-bold transition-colors ${
                 aktif
-                  ? "bg-white text-ink shadow-sm"
-                  : "text-white/75 hover:bg-white/15 hover:text-white"
+                  ? terang
+                    ? "bg-navy-800 text-white shadow-sm"
+                    : "bg-white text-ink shadow-sm"
+                  : terang
+                    ? "text-slate-500 hover:bg-white hover:text-navy-800"
+                    : "text-white/75 hover:bg-white/15 hover:text-white"
               }`}
             >
               {JENJANG_LABEL[j]}

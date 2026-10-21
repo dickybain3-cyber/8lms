@@ -287,7 +287,7 @@ body {
 }
 
 .kartu-sekolah {
-  font-family: var(--font-serif), Poppins, sans-serif;
+  font-family: var(--font-serif, Poppins), Poppins, ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
   font-size: 3mm;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -321,7 +321,7 @@ body {
 }
 
 .kartu-nama {
-  font-family: var(--font-serif), Poppins, sans-serif;
+  font-family: var(--font-serif, Poppins), Poppins, ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
   font-size: 4.2mm;
   font-weight: 700;
   line-height: 1.15;
@@ -416,7 +416,7 @@ body {
 }
 
 .presensi-judul {
-  font-family: var(--font-serif), Poppins, sans-serif;
+  font-family: var(--font-serif, Poppins), Poppins, ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
   font-size: 4.5mm;
   font-weight: 800;
 }
@@ -428,7 +428,7 @@ body {
 
 .presensi-ruang {
   margin-left: auto;
-  font-family: var(--font-serif), Poppins, sans-serif;
+  font-family: var(--font-serif, Poppins), Poppins, ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
   font-size: 5mm;
   font-weight: 800;
 }

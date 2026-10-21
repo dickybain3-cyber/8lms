@@ -61,7 +61,7 @@ export default function DaftarEventKelompok({
   const kelompok = kelompokkanEvent(daftar);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {URUTAN_STATUS.map((status) => {
         const semua = kelompok[status];
         if (semua.length === 0) return null;
@@ -87,7 +87,7 @@ export default function DaftarEventKelompok({
             </div>
 
             {status === "selesai" && bisaEdit && (
-              <p className="mb-3 text-sm text-slate-500">
+              <p className="mb-3 text-[0.8rem] text-slate-500">
                 Perlu ujian susulan atau perpanjangan tenggat? Klik{" "}
                 <strong className="font-semibold text-slate-600">
                   Buka ulang
@@ -97,7 +97,7 @@ export default function DaftarEventKelompok({
               </p>
             )}
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {tampil.map((event) => (
                 <KartuEvent
                   key={event.id}
@@ -148,8 +148,8 @@ function KartuEvent({
   */
   return (
     <div className="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-[--primary] hover:shadow-lg hover:shadow-navy-800/10">
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <h3 className="min-w-0 font-serif text-lg font-bold leading-snug text-ink">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <h3 className="min-w-0 font-serif text-base font-bold leading-snug text-navy-900">
           <Link
             href={`/admin/event/${event.id}${suffix}`}
             className="after:absolute after:inset-0 after:rounded-2xl"
@@ -180,7 +180,7 @@ function KartuEvent({
         {formatTanggal(event.tgl_selesai)}
       </p>
 
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
         <span className="rounded-full bg-teal/10 px-2.5 py-1 text-[0.68rem] font-semibold text-teal">
           Kelas {event.kelas_utama}
         </span>
@@ -188,7 +188,7 @@ function KartuEvent({
       </div>
 
       {bisaBukaUlang && (
-        <div className="relative z-10 mt-3 border-t border-slate-100 pt-3">
+        <div className="relative z-10 mt-2.5 border-t border-slate-100 pt-2.5">
           <Link
             href={`/admin/event/${event.id}/edit`}
             className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-teal hover:text-teal"
