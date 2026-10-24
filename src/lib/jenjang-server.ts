@@ -10,6 +10,6 @@ import { JENJANG_COOKIE, parseJenjang, type Jenjang } from "@/lib/jenjang";
  * `-server`) SENGAJA tidak boleh mengimpor `next/headers` karena file
  * itu juga dipakai Client Component.
  */
-export function getJenjangFromServerCookies(): Jenjang | null {
-  return parseJenjang(cookies().get(JENJANG_COOKIE)?.value);
+export async function getJenjangFromServerCookies(): Promise<Jenjang | null> {
+  return parseJenjang((await cookies()).get(JENJANG_COOKIE)?.value);
 }

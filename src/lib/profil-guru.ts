@@ -49,8 +49,8 @@ import { JENJANG_LABEL, JENJANG_LIST, type Jenjang } from "@/lib/jenjang";
  * dengan database palsu tanpa menyentuh Supabase sungguhan.
  */
 
-export type KlienAdmin = ReturnType<typeof createAdminClient>;
-export type PembuatKlien = (jenjang: Jenjang) => KlienAdmin;
+export type KlienAdmin = Awaited<ReturnType<typeof createAdminClient>>;
+export type PembuatKlien = (jenjang: Jenjang) => KlienAdmin | Promise<KlienAdmin>;
 
 const klienAsli: PembuatKlien = (jenjang) => createAdminClient(jenjang);
 
@@ -137,7 +137,7 @@ export async function cariAkunTerhubung(opts: {
       try {
         if (!adalahSesi && !opts.nip) return { jenjang, status: "tidak_ada" };
 
-        const klien = buatKlien(jenjang);
+        const klien = await buatKlien(jenjang);
         const dasar = klien
           .from("guru")
           .select("id, auth_id, nama, nip, username, foto_url")
@@ -373,7 +373,7 @@ export async function terapkanUsername(opts: {
   // 1. Periksa bentrokan di SEMUA project sebelum menulis apa pun.
   for (const a of perlu) {
     try {
-      const { data, error } = await buatKlien(a.jenjang)
+      const { data, error } = await (await buatKlien(a.jenjang))
         .from("guru")
         .select("id")
         .eq("username", usernameBaru)
@@ -403,7 +403,7 @@ export async function terapkanUsername(opts: {
 
   for (const a of perlu) {
     const galat = await gantiUsernameSatu(
-      buatKlien(a.jenjang),
+      await buatKlien(a.jenjang),
       a,
       usernameBaru,
       emailBaru
@@ -419,7 +419,7 @@ export async function terapkanUsername(opts: {
     laporan.push({ jenjang: a.jenjang, ok: false, pesan: galat });
     const gagalPulih: string[] = [];
     for (const b of selesai.reverse()) {
-      const g = await pulihkanUsernameSatu(buatKlien(b.jenjang), b);
+      const g = await pulihkanUsernameSatu(await buatKlien(b.jenjang), b);
       if (g) gagalPulih.push(`${JENJANG_LABEL[b.jenjang]} (${g})`);
     }
 
@@ -467,7 +467,7 @@ async function terapkanSebisanya(opts: {
 
   const jalankan = async (a: AkunGuru): Promise<LaporanSinkron> => {
     try {
-      const galat = await opts.kerja(buatKlien(a.jenjang), a);
+      const galat = await opts.kerja(await buatKlien(a.jenjang), a);
       return {
         jenjang: a.jenjang,
         ok: galat === null,

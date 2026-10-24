@@ -78,13 +78,14 @@ type SoalRow = {
   gambar_url: string | null;
 };
 
-export default async function PreviewPage({
-  params,
-  searchParams,
-}: {
-  params: { eventId: string; mapelId: string };
-  searchParams: { jenjang?: string };
-}) {
+export default async function PreviewPage(
+  props: {
+    params: Promise<{ eventId: string; mapelId: string }>;
+    searchParams: Promise<{ jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const sesi = await getSesiGuru();
   const jenjangQuery = parseJenjang(searchParams.jenjang);
 
@@ -92,8 +93,8 @@ export default async function PreviewPage({
   // sebagai `Jenjang | null` supaya TypeScript bisa menyempitkannya.
   const jenjangAdmin = sesi.isAdmin ? jenjangQuery : null;
   const client = jenjangAdmin
-    ? createAdminClient(jenjangAdmin)
-    : createClient();
+    ? await createAdminClient(jenjangAdmin)
+    : await createClient();
 
   const { data: mapel } = await client
     .from("mapel")

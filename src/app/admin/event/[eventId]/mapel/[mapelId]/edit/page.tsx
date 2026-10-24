@@ -4,12 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { cekMapelSudahDikerjakan } from "@/app/admin/event/actions";
 import MapelEditForm from "./MapelEditForm";
 
-export default async function MapelEditPage({
-  params,
-}: {
-  params: { eventId: string; mapelId: string };
-}) {
-  const supabase = createClient();
+export default async function MapelEditPage(
+  props: {
+    params: Promise<{ eventId: string; mapelId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: mapel } = await supabase
     .from("mapel")

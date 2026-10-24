@@ -129,18 +129,19 @@ function ringkasanBaris(
   }
 }
 
-export default async function LogAktivitasPage({
-  searchParams,
-}: {
-  searchParams: {
-    entitas?: string;
-    guruId?: string;
-    dari?: string;
-    sampai?: string;
-    cursor?: string; // ISO timestamp created_at baris terakhir dari halaman sebelumnya
-  };
-}) {
-  const supabase = createClient();
+export default async function LogAktivitasPage(
+  props: {
+    searchParams: Promise<{
+      entitas?: string;
+      guruId?: string;
+      dari?: string;
+      sampai?: string;
+      cursor?: string; // ISO timestamp created_at baris terakhir dari halaman sebelumnya
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const supabase = await createClient();
 
   const { data: guruList } = await supabase
     .from("guru")

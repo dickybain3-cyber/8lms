@@ -69,7 +69,7 @@ async function siapkan(denganEmail: boolean): Promise<Konteks> {
   }
 
   // NIP dibaca lewat client sesi (kena RLS), bukan dari argumen browser.
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: baris, error } = await supabase
     .from("guru")
     .select("nip")
@@ -115,7 +115,7 @@ async function catat(
   detail: Record<string, unknown>
 ) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { error } = await supabase.rpc("catat_log_aktivitas", {
       p_aksi: aksi,
       p_entitas: "guru",

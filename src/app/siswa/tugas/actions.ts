@@ -39,7 +39,7 @@ export type ActionState = { error: string | null; pesan: string | null };
  */
 
 interface Konteks {
-  supabase: ReturnType<typeof createClient>;
+  supabase: Awaited<ReturnType<typeof createClient>>;
   siswaId: string;
   tugas: {
     id: string;
@@ -58,7 +58,7 @@ interface Konteks {
 async function siapkan(
   tugasId: string
 ): Promise<{ konteks: Konteks | null; error: string | null }> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
@@ -391,7 +391,7 @@ export async function hapusBerkasPengumpulan(
 export async function urlBerkasSaya(
   path: string
 ): Promise<{ url: string | null; error: string | null }> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase.storage
     .from(BUCKET_TUGAS)
     .createSignedUrl(path, 300);

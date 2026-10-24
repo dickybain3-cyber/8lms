@@ -27,7 +27,7 @@ export default async function ProfilPage() {
     );
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Kolom `foto_url` & `password_diganti_at` datang dari migrasi 0016.
   // Kalau belum dijalankan di project ini, select lengkap gagal — jangan

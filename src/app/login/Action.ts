@@ -103,7 +103,7 @@ export type SiswaPilihan = { id: string; nama: string; username: string };
 export async function ambilDaftarKelas(
   jenjang: number
 ): Promise<KelasPilihan[]> {
-  const admin = createAdminClient(jenjangAman(jenjang));
+  const admin = await createAdminClient(jenjangAman(jenjang));
   const { data, error } = await admin
     .from("kelas")
     .select("id, nama")
@@ -125,7 +125,7 @@ export async function ambilDaftarSiswa(
   jenjang: number,
   kelasId: string
 ): Promise<SiswaPilihan[]> {
-  const admin = createAdminClient(jenjangAman(jenjang));
+  const admin = await createAdminClient(jenjangAman(jenjang));
   const { data, error } = await admin
     .from("siswa")
     .select("id, nama, username")
@@ -148,7 +148,7 @@ export type HasilSiapLogin =
  * dihapus/di-insert ulang lewat SQL), bukan di setiap login.
  */
 async function cariUserByEmail(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Awaited<ReturnType<typeof createAdminClient>>,
   email: string
 ): Promise<string | null> {
   const target = email.toLowerCase();
@@ -189,9 +189,9 @@ export async function siapkanLoginSiswa(
   siswaId: string,
   tanggalLahir: string
 ): Promise<HasilSiapLogin> {
-  let admin: ReturnType<typeof createAdminClient>;
+  let admin: Awaited<ReturnType<typeof createAdminClient>>;
   try {
-    admin = createAdminClient(jenjangAman(jenjang));
+    admin = await createAdminClient(jenjangAman(jenjang));
   } catch (err) {
     return {
       ok: false,

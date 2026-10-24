@@ -18,7 +18,7 @@ import MonitoringClient from "./MonitoringClient";
  * pembaruan tanpa memuat ulang seluruh halaman.
  */
 export default async function MonitoringPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },

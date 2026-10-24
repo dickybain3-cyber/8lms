@@ -35,7 +35,8 @@ function tanggal(iso: string) {
  * sehingga halaman tetap server-rendered — ringan di HP — dan bisa dicetak
  * ke PDF persis seperti yang sedang dilihat.
  */
-export default async function StatistikKegiatanPage({ searchParams }: { searchParams: Cari }) {
+export default async function StatistikKegiatanPage(props: { searchParams: Promise<Cari> }) {
+  const searchParams = await props.searchParams;
   const sesi = await getSesiGuru();
   const jenjang: Jenjang = parseJenjang(searchParams.jenjang) ?? sesi.jenjang ?? 7;
   const eventId = searchParams.event ?? "";

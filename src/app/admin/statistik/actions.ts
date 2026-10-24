@@ -21,7 +21,7 @@ export type HasilDistribusi =
  * Memuat distribusi nilai satu mapel — untuk jenjang MANA PUN.
  *
  * Sebelumnya komponen `DistribusiNilai` memanggil RPC langsung dari
- * browser lewat `createClient()`, yang selalu menyasar project di cookie
+ * browser lewat `await createClient()`, yang selalu menyasar project di cookie
  * `lms_jenjang`. Itu benar selama halaman statistik cuma menampilkan satu
  * jenjang. Begitu dashboardnya menggabung ketiganya, admin yang login di
  * kelas 7 akan mengirim `mapel_id` milik kelas 9 ke project kelas 7 —
@@ -48,7 +48,7 @@ export async function muatDistribusiNilai(
   if (tidakBoleh) return { ok: false, error: tidakBoleh };
 
   if (jenjang === sesi.jenjang) {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { data, error } = await supabase.rpc("get_distribusi_nilai", {
       p_mapel_id: mapelId,
     });
@@ -60,7 +60,7 @@ export async function muatDistribusiNilai(
 
   // Lintas jenjang: hanya sampai sini kalau sesi.isAdmin true (dijaga
   // `pastikanBolehKeJenjang` di atas).
-  const admin = createAdminClient(jenjang);
+  const admin = await createAdminClient(jenjang);
   const { data, error } = await admin.rpc("get_distribusi_nilai_admin", {
     p_mapel_id: mapelId,
   });

@@ -24,7 +24,7 @@ export type ActionState = { error: string | null };
  * cukup disalin masuk; kalau bermasalah, menghapusnya tidak membatalkan
  * apa pun yang sudah ada.
  *
- * Semua fungsi di sini memakai `createClient()` (cookie-bound, kena RLS),
+ * Semua fungsi di sini memakai `await createClient()` (cookie-bound, kena RLS),
  * BUKAN service role. Guru sudah punya akses penuh ke tabel `tugas`,
  * `tugas_kelas`, dan `pengumpulan_tugas` lewat policy `*_guru_all` di
  * migrasi 0019, jadi tidak ada alasan melewati RLS di sini. Konsekuensinya
@@ -51,7 +51,7 @@ export type ActionState = { error: string | null };
  * Postgres mentah.
  */
 async function ambilJenisEvent(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
 ): Promise<JenisEvent | null> {
   const lengkap = await supabase
@@ -80,7 +80,7 @@ async function ambilJenisEvent(
  *  barisnya tidak ketemu — kolomnya memang nullable, dan kehilangan jejak
  *  siapa yang menilai tidak boleh sampai menggagalkan penilaiannya. */
 async function guruSaatIni(
-  supabase: ReturnType<typeof createClient>
+  supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<string | null> {
   const {
     data: { user },
@@ -174,7 +174,7 @@ export async function createTugas(
     return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Penjaga jenis event, cermin dari trigger
   // `cegah_tugas_di_event_bukan_assignment` (0019). Dicek di sini supaya
@@ -257,7 +257,7 @@ export async function updateTugas(
     return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from("tugas")
@@ -338,7 +338,7 @@ export async function hitungDampakHapusTugas(tugasId: string): Promise<{
   jumlahDinilai: number;
   jumlahBerkas: number;
 }> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { count: jumlahPengumpulan } = await supabase
     .from("pengumpulan_tugas")
@@ -369,7 +369,7 @@ export async function deleteTugas(
   eventId: string,
   tugasId: string
 ): Promise<ActionState> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // 1. Berkas dulu, baris belakangan. Urutannya penting: kalau barisnya
   //    dihapus lebih dulu lalu penghapusan berkas gagal, tidak ada lagi
@@ -429,7 +429,7 @@ export async function simpanPenilaian(
   const nilaiRaw = String(formData.get("nilai") ?? "");
   const catatan = String(formData.get("catatan_guru") ?? "").trim();
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: tugas } = await supabase
     .from("tugas")
@@ -485,7 +485,7 @@ export async function simpanPenilaian(
 export async function urlUnduhBerkas(
   path: string
 ): Promise<{ url: string | null; error: string | null }> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase.storage
     .from(BUCKET_TUGAS)

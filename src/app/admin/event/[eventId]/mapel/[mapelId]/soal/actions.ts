@@ -253,7 +253,7 @@ export async function createSoal(
     return { error: validasiError };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // urutan = jumlah soal yang sudah ada di mapel ini + 1 (auto, tidak
   // diisi manual — lihat PROMPT-SESI-3.md poin 4).
@@ -364,7 +364,7 @@ export async function updateSoal(
     return { error: validasiError };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from("soal")
@@ -398,7 +398,7 @@ export async function deleteSoal(
   mapelId: string,
   soalId: string
 ): Promise<ActionState> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase
     .from("soal")
     .delete()
@@ -421,9 +421,9 @@ export async function deleteSoal(
 //      admin), bukan dari cookie sesi — lalu divalidasi ulang lewat
 //      `pastikanBolehKeJenjang()` di server. Guru biasa yang mencoba
 //      memanggil ini untuk jenjang lain akan ditolak di titik ini.
-//   2. Menulis lewat `createAdminClient()` (service_role, bypass RLS) via
+//   2. Menulis lewat `await createAdminClient()` (service_role, bypass RLS) via
 //      `buatSoalAdmin`/`updateSoalAdmin`/`hapusSoalAdmin` di
-//      admin-multi.ts — BUKAN `createClient()` cookie-bound seperti jalur
+//      admin-multi.ts — BUKAN `await createClient()` cookie-bound seperti jalur
 //      guru, karena akun admin project jenjang A tidak dikenal oleh
 //      project jenjang B/C.
 //   3. Log `log_aktivitas` dicatat MANUAL lewat `catatLogManual()` (di
@@ -516,7 +516,7 @@ export async function createSoalAdmin(
   // oleh project jenjang B/C, jadi client cookie-bound akan ditolak RLS.
   let keBank = false;
   if (soalBaruId) {
-    const adminClient = createAdminClient(jenjang);
+    const adminClient = await createAdminClient(jenjang);
     const label = await ambilLabelMapel(adminClient, mapelId);
     keBank = await simpanKeBankSoal(adminClient, {
       mapelNama: label.mapelNama,
@@ -679,7 +679,7 @@ export async function updateSkorSoal(
   const hasil = validasiSkor(skorRaw);
   if ("error" in hasil) return hasil;
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase
     .from("soal")
     .update({ skor: hasil.skor })
@@ -713,7 +713,7 @@ export async function updateSkorSoalAdmin(
   const hasil = validasiSkor(skorRaw);
   if ("error" in hasil) return hasil;
 
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const { error } = await client
     .from("soal")
     .update({ skor: hasil.skor })

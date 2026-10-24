@@ -86,7 +86,7 @@ export async function importSiswaBatch(
   // Pastikan pemanggil benar-benar guru yang login — service role di
   // bawah ini melewati RLS sepenuhnya, jadi pengecekan ini WAJIB dilakukan
   // manual di sini, bukan diserahkan ke RLS seperti action lain.
-  const sessionSupabase = createClient();
+  const sessionSupabase = await createClient();
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
@@ -111,7 +111,7 @@ export async function importSiswaBatch(
 
   let admin;
   try {
-    admin = createAdminClient();
+    admin = await createAdminClient();
   } catch (err) {
     return rows.map((r) => ({
       status: "dilewati" as const,
@@ -314,7 +314,7 @@ export type ResetPasswordResult =
 export async function resetPasswordSiswa(
   siswaId: string
 ): Promise<ResetPasswordResult> {
-  const sessionSupabase = createClient();
+  const sessionSupabase = await createClient();
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
@@ -333,7 +333,7 @@ export async function resetPasswordSiswa(
 
   let admin;
   try {
-    admin = createAdminClient();
+    admin = await createAdminClient();
   } catch (err) {
     return {
       success: false,
@@ -405,7 +405,7 @@ export async function tambahSiswaManual(
   kelasId: string,
   tanggalLahirISO: string
 ): Promise<TambahSiswaManualResult> {
-  const sessionSupabase = createClient();
+  const sessionSupabase = await createClient();
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
@@ -441,7 +441,7 @@ export async function tambahSiswaManual(
 
   let admin;
   try {
-    admin = createAdminClient();
+    admin = await createAdminClient();
   } catch (err) {
     return {
       success: false,
@@ -528,7 +528,7 @@ export type DampakHapusSiswa = {
 export async function hitungDampakHapusSiswa(
   siswaId: string
 ): Promise<DampakHapusSiswa> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { count: jumlahJawabanSiswa } = await supabase
     .from("jawaban_siswa")
@@ -582,7 +582,7 @@ export type HapusAkunResult = { success: true } | { success: false; error: strin
  * lagi begitu delete berhasil, jadi tidak bisa dibaca ulang sesudahnya.
  */
 export async function deleteSiswa(siswaId: string): Promise<HapusAkunResult> {
-  const sessionSupabase = createClient();
+  const sessionSupabase = await createClient();
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
@@ -601,7 +601,7 @@ export async function deleteSiswa(siswaId: string): Promise<HapusAkunResult> {
 
   let admin;
   try {
-    admin = createAdminClient();
+    admin = await createAdminClient();
   } catch (err) {
     return {
       success: false,

@@ -90,7 +90,7 @@ function validasiDurasi(
  * ditemukan) dibiarkan mengalir apa adanya ke pemanggil.
  */
 async function ambilJenisEvent(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
 ): Promise<JenisEvent | null> {
   const lengkap = await supabase
@@ -149,7 +149,7 @@ export async function createEvent(
     return { error: "Pilih jenis kegiatan." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -249,7 +249,7 @@ export async function updateEvent(
     return { error: "Pilih jenjang kelas utama (7, 8, atau 9)." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase
     .from("event")
     .update({
@@ -280,7 +280,7 @@ export async function updateEvent(
  * tidak mengecek ulang, cuma mengeksekusi setelah guru mengonfirmasi.
  */
 export async function deleteEvent(eventId: string): Promise<ActionState> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase.from("event").delete().eq("id", eventId);
 
   if (error) {
@@ -304,7 +304,7 @@ export async function hitungDampakHapusEvent(eventId: string): Promise<{
   jumlahJawabanSiswa: number;
   jumlahNilai: number;
 }> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: mapelList } = await supabase
     .from("mapel")
@@ -375,7 +375,7 @@ export async function createMapel(
     return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Penjaga Tahap 3: mapel/soal cuma untuk event yang memakai mesin ujian
   // (asesmen_akhir/kuis_harian). Ini duplikat sengaja dari trigger DB
@@ -461,7 +461,7 @@ export async function updateMapel(
     return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { error: mapelError } = await supabase
     .from("mapel")
@@ -528,7 +528,7 @@ export async function deleteMapel(
   eventId: string,
   mapelId: string
 ): Promise<ActionState> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase.from("mapel").delete().eq("id", mapelId);
 
   if (error) {
@@ -545,7 +545,7 @@ export async function hitungDampakHapusMapel(mapelId: string): Promise<{
   jumlahJawabanSiswa: number;
   jumlahNilai: number;
 }> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { count: jumlahSoal } = await supabase
     .from("soal")
@@ -581,7 +581,7 @@ export async function hitungDampakHapusMapel(mapelId: string): Promise<{
 export async function cekMapelSudahDikerjakan(
   mapelId: string
 ): Promise<number> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { count } = await supabase
     .from("jawaban_siswa")
     .select("siswa_id", { count: "exact", head: true })

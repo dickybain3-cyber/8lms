@@ -19,9 +19,9 @@ import { getJenjangFromServerCookies } from "@/lib/jenjang-server";
  * ini di-try/catch supaya tidak crash; refresh token tetap ditangani
  * oleh middleware.ts di setiap request.
  */
-export function createClient() {
-  const cookieStore = cookies();
-  const jenjang = getJenjangFromServerCookies();
+export async function createClient() {
+  const cookieStore = await cookies();
+  const jenjang = await getJenjangFromServerCookies();
 
   if (!jenjang) {
     throw new Error(

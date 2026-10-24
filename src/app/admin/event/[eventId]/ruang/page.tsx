@@ -30,13 +30,14 @@ import RuangClient from "./RuangClient";
  * membaca 3 database sekaligus lewat service_role, yang cuma boleh
  * dipanggil setelah `sesi.isAdmin` diverifikasi.
  */
-export default async function RuangEventPage({
-  params,
-  searchParams,
-}: {
-  params: { eventId: string };
-  searchParams: { jenjang?: string };
-}) {
+export default async function RuangEventPage(
+  props: {
+    params: Promise<{ eventId: string }>;
+    searchParams: Promise<{ jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const sesi = await getSesiGuru();
 
   if (!sesi.isAdmin) {

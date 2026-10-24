@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import MapelForm from "./MapelForm";
 
-export default async function MapelBaruPage({
-  params,
-}: {
-  params: { eventId: string };
-}) {
-  const supabase = createClient();
+export default async function MapelBaruPage(
+  props: {
+    params: Promise<{ eventId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: event } = await supabase
     .from("event")

@@ -29,7 +29,7 @@ import { isJenjangValid, type Jenjang } from "@/lib/jenjang";
  * mapel biasa.
  */
 async function pastikanAdmin(): Promise<{ guruId: string; nama: string }> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },

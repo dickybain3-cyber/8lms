@@ -5,12 +5,13 @@ import { statusEvent } from "@/lib/event-status";
 import { jenisEventValid, type JenisEvent } from "@/lib/jenis-event";
 import EventEditForm from "./EventEditForm";
 
-export default async function EventEditPage({
-  params,
-}: {
-  params: { eventId: string };
-}) {
-  const supabase = createClient();
+export default async function EventEditPage(
+  props: {
+    params: Promise<{ eventId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   // Dua tahap: kolom `jenis` (migrasi 0018) belum tentu ada di project ini.
   const lengkap = await supabase

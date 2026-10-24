@@ -22,7 +22,7 @@ import type { TipeSoal } from "@/types";
  *   - `jenjang` diberikan DAN pemanggilnya admin -> `createAdminClient`
  *     (service_role, lintas jenjang), setelah `pastikanBolehKeJenjang()`
  *     memverifikasi ulang di server.
- *   - selain itu -> `createClient()` cookie-bound, terbatas pada project
+ *   - selain itu -> `await createClient()` cookie-bound, terbatas pada project
  *     jenjang tempat orangnya login.
  *
  * `jenjang` datang dari `?jenjang=` di URL, artinya dari browser, artinya
@@ -31,11 +31,11 @@ import type { TipeSoal } from "@/types";
  * pemeriksaannya ada di setiap aksi, bukan cuma di halamannya.
  */
 async function pilihClient(jenjang: Jenjang | null): Promise<
-  | { client: ReturnType<typeof createClient>; error: null }
+  | { client: Awaited<ReturnType<typeof createClient>>; error: null }
   | { client: null; error: string }
 > {
   if (jenjang === null) {
-    return { client: createClient(), error: null };
+    return { client: await createClient(), error: null };
   }
 
   if (!isJenjangValid(jenjang)) {
@@ -49,8 +49,8 @@ async function pilihClient(jenjang: Jenjang | null): Promise<
   }
 
   return {
-    client: createAdminClient(jenjang) as unknown as ReturnType<
-      typeof createClient
+    client: (await createAdminClient(jenjang)) as unknown as Awaited<
+      ReturnType<typeof createClient>
     >,
     error: null,
   };

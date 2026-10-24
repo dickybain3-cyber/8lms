@@ -40,12 +40,13 @@ import {
  * Akibat langsungnya: `papanTugas()` menerima `target` terpisah dari
  * panjang daftar pengumpulan — lihat komentar di `src/lib/tugas.ts`.
  */
-export default async function TugasDetailPage({
-  params,
-}: {
-  params: { eventId: string; tugasId: string };
-}) {
-  const supabase = createClient();
+export default async function TugasDetailPage(
+  props: {
+    params: Promise<{ eventId: string; tugasId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: tugas } = await supabase
     .from("tugas")
@@ -101,7 +102,7 @@ export default async function TugasDetailPage({
     )
     .eq("tugas_id", params.tugasId);
 
-const petaPengumpulan = new Map<string, NonNullable<typeof pengumpulanList>[number]>();
+  const petaPengumpulan = new Map<string, NonNullable<typeof pengumpulanList>[number]>();
   for (const p of pengumpulanList ?? []) {
     petaPengumpulan.set(p.siswa_id as string, p);
   }

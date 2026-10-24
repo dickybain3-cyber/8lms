@@ -15,12 +15,13 @@ import TombolHapusForum from "../TombolHapusForum";
  * (lihat kepala 0020_forum.sql), jadi `event_id` sudah cukup untuk
  * menemukannya.
  */
-export default async function ForumEditPage({
-  params,
-}: {
-  params: { eventId: string };
-}) {
-  const supabase = createClient();
+export default async function ForumEditPage(
+  props: {
+    params: Promise<{ eventId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: event } = await supabase
     .from("event")

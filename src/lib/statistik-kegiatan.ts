@@ -11,7 +11,7 @@ import { rincianJawaban, type RincianJawaban } from "@/lib/analisis-jawaban";
  * sama dengan fitur lintas jenjang lain di aplikasi ini.
  */
 
-type Klien = ReturnType<typeof createAdminClient>;
+type Klien = Awaited<ReturnType<typeof createAdminClient>>;
 
 export interface MapelStat {
   id: string;
@@ -55,7 +55,7 @@ async function ambilSemua<T>(
 }
 
 export async function muatDataKegiatan(jenjang: Jenjang, eventId: string): Promise<DataKegiatan | null> {
-  const db: Klien = createAdminClient(jenjang);
+  const db: Klien = await createAdminClient(jenjang);
 
   const { data: ev, error: errEv } = await db
     .from("event")
@@ -155,7 +155,7 @@ export async function muatDataKegiatan(jenjang: Jenjang, eventId: string): Promi
  * database mana pun, sehingga versi RPC selalu gagal.
  */
 export async function muatAnalisisButirMapel(jenjang: Jenjang, mapelId: string): Promise<ButirHasil[] | string> {
-  const db = createAdminClient(jenjang);
+  const db = await createAdminClient(jenjang);
   try {
     const [soal, jawaban, nilai] = await Promise.all([
       ambilSemua<{ id: string; urutan: number; tipe: string; skor: number }>((a, b) =>
@@ -188,7 +188,7 @@ export async function muatRincianJawabanMapel(
   jenjang: Jenjang,
   mapelId: string
 ): Promise<RincianJawaban[] | string> {
-  const db = createAdminClient(jenjang);
+  const db = await createAdminClient(jenjang);
   try {
     const [soal, jawaban, nilai] = await Promise.all([
       ambilSemua<{ id: string; urutan: number; tipe: string; skor: number; konten_jsonb: Record<string, unknown> | null }>((a, b) =>

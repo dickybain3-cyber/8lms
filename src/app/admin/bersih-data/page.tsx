@@ -14,11 +14,12 @@ import BersihDataClient from "./BersihDataClient";
  * sama dengan halaman admin lain. Angka per kegiatan dihitung saat
  * halaman dibuka supaya admin tahu persis apa yang akan hilang.
  */
-export default async function BersihDataPage({
-  searchParams,
-}: {
-  searchParams: { jenjang?: string };
-}) {
+export default async function BersihDataPage(
+  props: {
+    searchParams: Promise<{ jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const sesi = await getSesiGuru();
 
   if (!sesi.isAdmin) {
@@ -36,7 +37,7 @@ export default async function BersihDataPage({
   }
 
   const jenjang = parseJenjang(searchParams.jenjang) ?? sesi.jenjang ?? 7;
-  const kegiatan = await ringkasDataKegiatan(createAdminClient(jenjang));
+  const kegiatan = await ringkasDataKegiatan(await createAdminClient(jenjang));
 
   return (
     <div>

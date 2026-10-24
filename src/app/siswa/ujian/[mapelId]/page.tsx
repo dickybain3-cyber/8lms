@@ -33,12 +33,13 @@ import type { SoalSiswa } from "@/types";
  * SAMA PERSIS. Itu wajib: siswa yang halamannya ter-refresh di tengah
  * ujian tidak boleh kehilangan peta pengerjaannya.
  */
-export default async function UjianPage({
-  params,
-}: {
-  params: { mapelId: string };
-}) {
-  const supabase = createClient();
+export default async function UjianPage(
+  props: {
+    params: Promise<{ mapelId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const {
     data: { user },

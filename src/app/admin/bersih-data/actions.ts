@@ -45,7 +45,7 @@ export async function bersihkanKegiatanAksi(
   const ids = Array.from(new Set(eventIds.filter((x) => typeof x === "string" && x.length > 0)));
   if (ids.length === 0) return { error: "Pilih minimal satu kegiatan." };
 
-  const db = createAdminClient(jenjang);
+  const db = await createAdminClient(jenjang);
   const { data: events, error: bacaError } = await db
     .from("event")
     .select("id, nama, tgl_mulai, tgl_selesai")

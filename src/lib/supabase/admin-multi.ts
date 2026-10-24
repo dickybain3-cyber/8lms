@@ -46,7 +46,7 @@ export interface HasilJenjang<T> {
   error: string | null;
 }
 
-type AdminClient = ReturnType<typeof createAdminClient>;
+type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
 
 /**
  * Jalankan `kerja` di ketiga project SECARA PARALEL. Kegagalan satu project
@@ -62,7 +62,7 @@ export async function untukSemuaJenjang<T>(
   const hasil = await Promise.all(
     JENJANG_LIST.map(async (jenjang): Promise<HasilJenjang<T>> => {
       try {
-        const client = createAdminClient(jenjang);
+        const client = await createAdminClient(jenjang);
         const data = await kerja(client, jenjang);
         return { jenjang, data, error: null };
       } catch (e) {
@@ -149,7 +149,7 @@ export async function monitoringSatuMapel(
   jenjang: Jenjang,
   mapelId: string
 ): Promise<BarisMonitoring[]> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const { data, error } = await client.rpc("get_monitoring_ujian", {
     p_mapel_id: mapelId,
   });
@@ -168,7 +168,7 @@ export async function resetUjianSiswa(
   siswaId: string,
   mapelId: string
 ): Promise<void> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const { error } = await client.rpc("reset_ujian_siswa", {
     p_siswa_id: siswaId,
     p_mapel_id: mapelId,
@@ -181,7 +181,7 @@ export async function paksaKumpulkanSiswa(
   siswaId: string,
   mapelId: string
 ): Promise<void> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const { error } = await client.rpc("paksa_kumpulkan", {
     p_siswa_id: siswaId,
     p_mapel_id: mapelId,
@@ -193,7 +193,7 @@ export async function resetUjianSatuMapel(
   jenjang: Jenjang,
   mapelId: string
 ): Promise<number> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const { data, error } = await client.rpc("reset_ujian_mapel", {
     p_mapel_id: mapelId,
   });
@@ -292,7 +292,7 @@ type BarisGuruMentahLama = Omit<BarisGuruMentahLengkap, "password_status">;
 
 /**
  * Bentuk minimal client Supabase yang dibutuhkan fungsi di bawah — BUKAN
- * `ReturnType<typeof createAdminClient>` penuh, supaya bisa diuji dengan
+ * `Awaited<ReturnType<typeof createAdminClient>>` penuh, supaya bisa diuji dengan
  * client palsu (`tsx` + `node:assert`, lihat
  * `src/lib/__tests__/guru-detail-export.test.ts`) tanpa memasang seluruh
  * `@supabase/supabase-js`.
@@ -483,7 +483,7 @@ export async function daftarSoalMapelAdmin(
   jenjang: Jenjang,
   mapelId: string
 ): Promise<Soal[]> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const { data, error } = await client
     .from("soal")
     .select("id, mapel_id, tipe, urutan, skor, konten_jsonb, gambar_url")
@@ -501,7 +501,7 @@ export async function ambilSoalAdmin(
   jenjang: Jenjang,
   soalId: string
 ): Promise<Soal | null> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const { data, error } = await client
     .from("soal")
     .select("id, mapel_id, tipe, urutan, skor, konten_jsonb, gambar_url")
@@ -522,7 +522,7 @@ export async function buatSoalAdmin(
   input: SoalAdminInput,
   konteks: KonteksAdmin
 ): Promise<string> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
 
   const { count } = await client
     .from("soal")
@@ -562,7 +562,7 @@ export async function updateSoalAdmin(
   input: SoalAdminInput,
   konteks: KonteksAdmin
 ): Promise<void> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
 
   const { error } = await client
     .from("soal")
@@ -593,7 +593,7 @@ export async function hapusSoalAdmin(
   mapelId: string,
   konteks: KonteksAdmin
 ): Promise<void> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
 
   const { error } = await client
     .from("soal")
@@ -657,7 +657,7 @@ export async function detailNilaiMapelAdmin(
   jenjang: Jenjang,
   mapelId: string
 ): Promise<DetailNilaiMapelAdmin> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
 
   const galat: string[] = [];
   const catatGalat = (label: string, error: { message: string } | null) => {
@@ -802,7 +802,7 @@ export async function overrideNilaiAdmin(
     return { error: "Nilai harus berupa angka 0 atau lebih." };
   }
 
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
 
   const { data: jawaban } = await client
     .from("jawaban_siswa")
@@ -870,7 +870,7 @@ export async function hitungUlangNilaiMapelAdmin(
   mapelId: string,
   konteks: KonteksAdmin
 ): Promise<number> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
 
   const { data: jumlah, error } = await client.rpc(
     "hitung_ulang_semua_nilai",

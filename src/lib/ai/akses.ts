@@ -66,7 +66,7 @@ export async function aksesAi(
   }
 
   const client = (
-    target === sesi.jenjang ? createClient() : createAdminClient(target)
+    target === sesi.jenjang ? await createClient() : await createAdminClient(target)
   ) as SupabaseClient;
 
   return { sesi, jenjang: target, client };
@@ -98,6 +98,6 @@ export async function bacaBody(req: Request): Promise<Record<string, unknown> | 
  * keberadaan kunci — tidak memanggil Gemini.
  */
 export async function aiSiapJenjang(jenjang?: Jenjang | null): Promise<boolean> {
-  const j = jenjang ?? getJenjangFromServerCookies();
+  const j = jenjang ?? await getJenjangFromServerCookies();
   return j ? aiTersedia(j) : false;
 }

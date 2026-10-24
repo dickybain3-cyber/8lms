@@ -45,16 +45,16 @@ export interface SesiGuru {
 export const getSesiGuru = cache(muatSesiGuru);
 
 async function muatSesiGuru(): Promise<SesiGuru> {
-  const jenjang = getJenjangFromServerCookies();
+  const jenjang = await getJenjangFromServerCookies();
 
-  // Tanpa cookie jenjang, `createClient()` memang sengaja melempar error
+  // Tanpa cookie jenjang, `await createClient()` memang sengaja melempar error
   // (lihat server.ts). Di sini itu bukan kondisi luar biasa — middleware
   // akan melempar orangnya ke /login — jadi cukup kembalikan sesi kosong.
   if (!jenjang) {
     return sesiKosong(null);
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

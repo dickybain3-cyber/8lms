@@ -27,22 +27,23 @@ import BankSoalClient from "./BankSoalClient";
  * berikutnya dikerjakan lewat server action dari komponen klien —
  * lihat alasannya di BankSoalClient.
  */
-export default async function BankSoalPage({
-  searchParams,
-}: {
-  searchParams: { jenjang?: string };
-}) {
+export default async function BankSoalPage(
+  props: {
+    searchParams: Promise<{ jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const sesi = await getSesiGuru();
   const jenjangQuery = parseJenjang(searchParams.jenjang);
 
   // Ditulis sebagai satu nilai `Jenjang | null`, bukan boolean `modeAdmin`
   // terpisah: TypeScript tidak bisa menyempitkan `jenjangQuery` lewat
-  // variabel boolean lain, jadi `createAdminClient(jenjangQuery)` akan
+  // variabel boolean lain, jadi `await createAdminClient(jenjangQuery)` akan
   // ditolak karena masih mungkin null. Bentuk ini menyempitkannya langsung.
   const jenjangAdmin = sesi.isAdmin ? jenjangQuery : null;
   const client = jenjangAdmin
-    ? createAdminClient(jenjangAdmin)
-    : createClient();
+    ? await createAdminClient(jenjangAdmin)
+    : await createClient();
 
   const [mapelAwal, soalAwal] = await Promise.all([
     daftarMapelBank(client),

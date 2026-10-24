@@ -24,7 +24,7 @@ export type ActionState = { error: string | null };
  * yang sama persis seperti Tahap 4 dipisah dari Tahap 3: berkas yang
  * sudah teruji jalan tidak perlu ditimpa untuk memasang mesin baru.
  *
- * Semua fungsi di sini memakai `createClient()` (cookie-bound, kena RLS),
+ * Semua fungsi di sini memakai `await createClient()` (cookie-bound, kena RLS),
  * BUKAN service role — sama alasannya dengan `tugas/actions.ts`. Guru
  * sudah punya akses penuh lewat policy `*_guru_all` di migrasi 0020.
  */
@@ -37,7 +37,7 @@ export type ActionState = { error: string | null };
  *  diimpor, dengan alasan yang sama: berkas Tahap 4 yang sudah teruji
  *  jalan tidak perlu diubah sama sekali untuk memasang Tahap 5. */
 async function ambilJenisEvent(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
 ): Promise<JenisEvent | null> {
   const lengkap = await supabase
@@ -63,7 +63,7 @@ async function ambilJenisEvent(
 }
 
 async function guruSaatIni(
-  supabase: ReturnType<typeof createClient>
+  supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<string | null> {
   const {
     data: { user },
@@ -131,7 +131,7 @@ export async function createForumTopik(
     return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const jenis = await ambilJenisEvent(supabase, eventId);
   if (jenis === null) {
@@ -219,7 +219,7 @@ export async function updateForumTopik(
     return { error: "Format tanggal & jam tidak dikenali. Coba pilih ulang lewat kalender." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from("forum_topik")
@@ -291,7 +291,7 @@ export async function hitungDampakHapusForum(forumTopikId: string): Promise<{
   jumlahKelas: number;
   jumlahPesan: number;
 }> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { count: jumlahKelas } = await supabase
     .from("forum_kelas")
@@ -313,7 +313,7 @@ export async function deleteForumTopik(
   eventId: string,
   forumTopikId: string
 ): Promise<ActionState> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { error } = await supabase
     .from("forum_topik")
@@ -378,7 +378,7 @@ export async function kirimPesanGuru(
     return { error: "Pesan yang dibalas tidak valid." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const guruId = await guruSaatIni(supabase);
   if (!guruId) {
     return { error: "Sesi guru tidak ditemukan. Masuk lagi ya." };
@@ -447,7 +447,7 @@ export async function toggleBonusPesan(
   kelasId: string,
   pesanId: string
 ): Promise<{ error: string | null; bonusDiberikan: boolean | null }> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: pesan } = await supabase
     .from("forum_pesan")
@@ -521,7 +521,7 @@ export async function toggleReaksiPesan(
     return { error: "Pesan tidak valid.", emoji: null };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const guruId = await guruSaatIni(supabase);
   if (!guruId) {
     return { error: "Sesi guru tidak ditemukan. Masuk lagi ya.", emoji: null };

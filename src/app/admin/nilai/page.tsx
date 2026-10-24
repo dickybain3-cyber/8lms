@@ -82,7 +82,7 @@ function PesanDaftarKosong({
 }
 
 async function MapelPicker() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: mapelList } = await supabase
     .from("mapel")
@@ -154,10 +154,10 @@ async function MapelPicker() {
 async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
   // Jenjang sesi dibaca sekali di sini lalu dioper ke tabel — lihat
   // komentar di pemanggilan <NilaiTable> di bawah. Kalau cookie-nya
-  // hilang, `createClient()` di bawah ini sudah melempar error duluan,
+  // hilang, `await createClient()` di bawah ini sudah melempar error duluan,
   // jadi fallback 7 di sini murni untuk menyenangkan tipe.
-  const jenjang = getJenjangFromServerCookies() ?? 7;
-  const supabase = createClient();
+  const jenjang = await getJenjangFromServerCookies() ?? 7;
+  const supabase = await createClient();
 
   const galat: string[] = [];
   const catatGalat = (label: string, error: { message: string } | null) => {
@@ -485,11 +485,12 @@ async function DetailNilaiMapelAdminView({
   );
 }
 
-export default async function PengolahanNilaiPage({
-  searchParams,
-}: {
-  searchParams: { mapelId?: string; jenjang?: string };
-}) {
+export default async function PengolahanNilaiPage(
+  props: {
+    searchParams: Promise<{ mapelId?: string; jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const sesi = await getSesiGuru();
 
   if (sesi.isAdmin) {

@@ -12,11 +12,11 @@ import { getJenjangFromServerCookies } from "@/lib/jenjang-server";
  * Ringan untuk HP murah: tanpa backdrop-blur dan tanpa background-attachment
  * fixed (keduanya membuat GPU HP kelas bawah tersendat saat menggulir/mengetik).
  */
-export default function HalamanLogin({ jenjang }: { jenjang: Jenjang }) {
+export default async function HalamanLogin({ jenjang }: { jenjang: Jenjang }) {
   // Middleware sudah memulangkan orang yang login di jenjang INI ke dashboard.
   // Kalau cookie menunjuk jenjang lain, berarti masih ada sesi kelas lain di
   // browser ini: beri tahu bahwa sesi itu akan ditutup saat masuk di sini.
-  const jenjangLain = getJenjangFromServerCookies();
+  const jenjangLain = await getJenjangFromServerCookies();
   const adaSesiLain = jenjangLain !== null && jenjangLain !== jenjang;
 
   return (

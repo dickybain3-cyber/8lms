@@ -25,12 +25,13 @@ import { kelompokkanReaksi, type BarisReaksi } from "@/components/forum/ReaksiPe
  * ambil daftar siswa kelas ini lebih dulu, lalu TEMPELKAN angka dari
  * `forum_poin` kalau ada, sisanya 0.
  */
-export default async function ForumRuangKelasPage({
-  params,
-}: {
-  params: { eventId: string; kelasId: string };
-}) {
-  const supabase = createClient();
+export default async function ForumRuangKelasPage(
+  props: {
+    params: Promise<{ eventId: string; kelasId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   // Dibutuhkan <PemilihReaksi> (Part 6): guru yang sedang login harus tahu
   // reaksi MILIKNYA SENDIRI di tiap pesan (beda dari agregat semua guru,

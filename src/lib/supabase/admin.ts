@@ -26,12 +26,12 @@ import type { Jenjang } from "@/lib/jenjang";
  *
  * Sesi 16: jenjang diambil OTOMATIS dari cookie `lms_jenjang` (parameter
  * `jenjangOverride` disediakan tapi hampir tidak pernah dipakai di kode
- * yang sudah ada — semua pemanggil lama tetap `createAdminClient()`
+ * yang sudah ada — semua pemanggil lama tetap `await createAdminClient()`
  * tanpa argumen dan otomatis dapat project yang benar, karena guru yang
  * memanggil action ini sudah login ke jenjang tertentu).
  */
-export function createAdminClient(jenjangOverride?: Jenjang) {
-  const jenjang = jenjangOverride ?? getJenjangFromServerCookies();
+export async function createAdminClient(jenjangOverride?: Jenjang) {
+  const jenjang = jenjangOverride ?? await getJenjangFromServerCookies();
 
   if (!jenjang) {
     throw new Error(

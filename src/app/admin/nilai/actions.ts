@@ -25,7 +25,7 @@ export type ActionResult = { error: string | null };
 export async function hitungUlangNilaiMapel(
   mapelId: string
 ): Promise<ActionResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: jumlahDihitungUlang, error } = await supabase.rpc(
     "hitung_ulang_semua_nilai",
@@ -130,7 +130,7 @@ export async function resetUjianSiswa(params: {
   const tidakBoleh = await pastikanBolehKeJenjang(sesi, jenjang);
   if (tidakBoleh) return { error: tidakBoleh };
 
-  const admin = createAdminClient(jenjang);
+  const admin = await createAdminClient(jenjang);
 
   // Diambil dulu untuk dicatat di log — sesudah dihapus, nama & skornya
   // tidak bisa direkonstruksi lagi dari mana pun.

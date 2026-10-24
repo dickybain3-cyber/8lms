@@ -50,12 +50,13 @@ import DashboardSiswaClient, {
  * RLS `forum_topik_select_siswa` sudah otomatis membatasi ke forum yang
  * kelasnya ditautkan ke siswa yang login.
  */
-export default async function SiswaDashboardPage({
-  searchParams,
-}: {
-  searchParams: { pesan?: string };
-}) {
-  const supabase = createClient();
+export default async function SiswaDashboardPage(
+  props: {
+    searchParams: Promise<{ pesan?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const supabase = await createClient();
 
   // `mapel_select_siswa` sudah memfilter query ini ke mapel yang ditarget
   // ke kelas siswa yang login, terlepas dari jam mulai — jadi aman ambil

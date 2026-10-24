@@ -19,7 +19,7 @@ import {
  * dirapikan, pindahkan berdua ke satu tempat: src/lib/supabase/pastikan-admin.ts.
  */
 async function pastikanAdmin(): Promise<void> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -87,7 +87,7 @@ export async function ambilDetailGuruSemuaJenjang(): Promise<
   const hasil = await daftarGuruDetailSemuaJenjang();
   const dipisah = pisahkanHasil(hasil);
 
-  const sessionSupabase = createClient();
+  const sessionSupabase = await createClient();
   const { error: logError } = await sessionSupabase.rpc(
     "catat_log_aktivitas",
     {

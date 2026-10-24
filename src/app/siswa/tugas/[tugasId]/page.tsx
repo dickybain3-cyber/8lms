@@ -25,12 +25,13 @@ import FormPengumpulan, {
  * memakai service role (mis. untuk tampilan admin): penyaringnya hilang,
  * dan pengecekan kelas HARUS ditulis manual di titik itu.
  */
-export default async function TugasSiswaPage({
-  params,
-}: {
-  params: { tugasId: string };
-}) {
-  const supabase = createClient();
+export default async function TugasSiswaPage(
+  props: {
+    params: Promise<{ tugasId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: tugas } = await supabase
     .from("tugas")

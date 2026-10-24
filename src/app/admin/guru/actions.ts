@@ -52,7 +52,7 @@ export type ImportGuruRowResult =
       alasan: string;
     };
 
-async function pastikanPemanggilGuru(sessionSupabase: ReturnType<typeof createClient>) {
+async function pastikanPemanggilGuru(sessionSupabase: Awaited<ReturnType<typeof createClient>>) {
   const {
     data: { user },
   } = await sessionSupabase.auth.getUser();
@@ -73,7 +73,7 @@ async function pastikanPemanggilGuru(sessionSupabase: ReturnType<typeof createCl
 export async function importGuruBatch(
   rows: ImportGuruInputRow[]
 ): Promise<ImportGuruRowResult[]> {
-  const sessionSupabase = createClient();
+  const sessionSupabase = await createClient();
   const guruRow = await pastikanPemanggilGuru(sessionSupabase);
 
   if (!guruRow) {
@@ -88,7 +88,7 @@ export async function importGuruBatch(
 
   let admin;
   try {
-    admin = createAdminClient();
+    admin = await createAdminClient();
   } catch (err) {
     return rows.map((r) => ({
       status: "dilewati" as const,
@@ -270,7 +270,7 @@ export async function tambahGuruManual(
   nama: string,
   nip: string
 ): Promise<TambahGuruManualResult> {
-  const sessionSupabase = createClient();
+  const sessionSupabase = await createClient();
   const guruRow = await pastikanPemanggilGuru(sessionSupabase);
   if (!guruRow) {
     return {
@@ -294,7 +294,7 @@ export async function tambahGuruManual(
 
   let admin;
   try {
-    admin = createAdminClient();
+    admin = await createAdminClient();
   } catch (err) {
     return {
       success: false,
@@ -375,7 +375,7 @@ function generatePasswordAcak(): string {
 export async function resetPasswordGuru(
   guruId: string
 ): Promise<ResetPasswordResult> {
-  const sessionSupabase = createClient();
+  const sessionSupabase = await createClient();
   const guruRow = await pastikanPemanggilGuru(sessionSupabase);
 
   if (!guruRow) {
@@ -387,7 +387,7 @@ export async function resetPasswordGuru(
 
   let admin;
   try {
-    admin = createAdminClient();
+    admin = await createAdminClient();
   } catch (err) {
     return {
       success: false,
@@ -451,7 +451,7 @@ export type DampakHapusGuru = { jumlahEventDibuat: number };
 export async function hitungDampakHapusGuru(
   guruId: string
 ): Promise<DampakHapusGuru> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { count: jumlahEventDibuat } = await supabase
     .from("event")
     .select("id", { count: "exact", head: true })
@@ -462,7 +462,7 @@ export async function hitungDampakHapusGuru(
 export type HapusAkunResult = { success: true } | { success: false; error: string };
 
 export async function deleteGuru(guruId: string): Promise<HapusAkunResult> {
-  const sessionSupabase = createClient();
+  const sessionSupabase = await createClient();
   const guruRow = await pastikanPemanggilGuru(sessionSupabase);
 
   if (!guruRow) {
@@ -482,7 +482,7 @@ export async function deleteGuru(guruId: string): Promise<HapusAkunResult> {
 
   let admin;
   try {
-    admin = createAdminClient();
+    admin = await createAdminClient();
   } catch (err) {
     return {
       success: false,

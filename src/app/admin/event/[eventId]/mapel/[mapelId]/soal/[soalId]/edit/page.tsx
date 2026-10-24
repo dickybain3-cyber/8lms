@@ -14,7 +14,7 @@ import type { TipeSoal } from "@/types";
 /** Sama seperti di soal/baru/page.tsx — query langsung, cuma butuh `nama`
  *  mapel untuk breadcrumb. */
 async function ambilMapelAdmin(jenjang: Jenjang, eventId: string, mapelId: string) {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const { data } = await client
     .from("mapel")
     .select("id, nama, event_id")
@@ -35,7 +35,7 @@ async function cekMapelSudahDikerjakanAdmin(
   jenjang: Jenjang,
   mapelId: string
 ): Promise<number> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const { count } = await client
     .from("jawaban_siswa")
     .select("siswa_id", { count: "exact", head: true })
@@ -50,13 +50,14 @@ async function cekMapelSudahDikerjakanAdmin(
  * perlu memuat SATU soal yang mau diedit; untuk jalur admin dipakai
  * `ambilSoalAdmin()` yang SUDAH ADA di admin-multi.ts (bukan dibuat baru).
  */
-export default async function SoalEditPage({
-  params,
-  searchParams,
-}: {
-  params: { eventId: string; mapelId: string; soalId: string };
-  searchParams: { jenjang?: string };
-}) {
+export default async function SoalEditPage(
+  props: {
+    params: Promise<{ eventId: string; mapelId: string; soalId: string }>;
+    searchParams: Promise<{ jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const sesi = await getSesiGuru();
   const jenjangQuery = parseJenjang(searchParams.jenjang);
   const modeAdmin = sesi.isAdmin && jenjangQuery !== null;
@@ -121,7 +122,7 @@ export default async function SoalEditPage({
   }
 
   // Guru biasa — jalur cookie-bound lama, tidak berubah.
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: mapel } = await supabase
     .from("mapel")

@@ -17,7 +17,7 @@ export async function muatEventSesi(): Promise<{
   daftar: EventAdmin[];
   error: string | null;
 }> {
-  const supabase = createClient();
+  const supabase = await createClient();
   try {
     const daftar = await ambilDaftarEventMentah(supabase);
     return { daftar, error: null };

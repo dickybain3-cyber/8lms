@@ -274,7 +274,7 @@ function FormKirimGuru({
   onBatalBalas,
   galatAksi,
 }: {
-  formRef: RefObject<HTMLFormElement>;
+  formRef: RefObject<HTMLFormElement | null>;
   formAction: (formData: FormData) => void;
   error: string | null;
   balasan: PesanKutipan | null;

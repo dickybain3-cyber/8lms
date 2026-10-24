@@ -28,11 +28,12 @@ import {
  * `?jenjang=` diteruskan ke tautan detail event supaya konteksnya tidak
  * hilang satu klik kemudian.
  */
-export default async function EventListPage({
-  searchParams,
-}: {
-  searchParams: { jenjang?: string };
-}) {
+export default async function EventListPage(
+  props: {
+    searchParams: Promise<{ jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const sesi = await getSesiGuru();
   const jenjangQuery = parseJenjang(searchParams.jenjang);
 

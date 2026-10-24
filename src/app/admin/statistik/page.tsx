@@ -72,7 +72,7 @@ export default async function StatistikPage() {
   if (sesi.isAdmin) {
     hasilPerJenjang = await fanOutRpc<StatistikMapel>("get_statistik_mapel_admin");
   } else {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { data, error } = await supabase.rpc("get_statistik_mapel");
     hasilPerJenjang = [
       {

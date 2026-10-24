@@ -16,7 +16,7 @@ import { jenisEventValid, type JenisEvent } from "@/lib/jenis-event";
  *
  * ATURAN KEAMANAN DI SINI SAMA PERSIS dengan admin-multi.ts, dan wajib
  * dibaca sebelum menambah fungsi:
- *   - Fungsi yang memakai `createAdminClient()` memakai service_role
+ *   - Fungsi yang memakai `await createAdminClient()` memakai service_role
  *     (melewati RLS sepenuhnya). Karena itu HANYA boleh dipanggil dari
  *     Server Component / Server Action, dan pemanggilnya WAJIB sudah
  *     memastikan `sesi.isAdmin` lebih dulu lewat `getSesiGuru()`.
@@ -64,7 +64,7 @@ export interface EventAdmin {
 /**
  * Bentuk minimal client yang dibutuhkan `ambilDaftarEventMentah` — supaya
  * bisa dipakai baik oleh `createClient()` (RLS, jalur guru di
- * `event-sesi.ts`) maupun `createAdminClient()` (service role, jalur admin
+ * `event-sesi.ts`) maupun `await createAdminClient()` (service role, jalur admin
  * lintas jenjang di bawah), dan supaya bisa diuji dengan client palsu
  * (lihat `src/lib/__tests__/event-jenis.test.ts`).
  */
@@ -185,7 +185,7 @@ export async function ambilDaftarEventMentah(
 export async function daftarEventAdmin(
   jenjang: Jenjang
 ): Promise<EventAdmin[]> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   return ambilDaftarEventMentah(client);
 }
 
@@ -217,7 +217,7 @@ export async function detailEventAdmin(
   jenjang: Jenjang,
   eventId: string
 ): Promise<EventDetailAdmin> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
 
   const lengkap = await client
     .from("event")
@@ -451,7 +451,7 @@ export async function daftarTugasAdmin(
   jenjang: Jenjang,
   eventId: string
 ): Promise<TugasRingkas[]> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   return ambilRingkasTugas(client as unknown as KlienTugasMentah, eventId);
 }
 
@@ -636,7 +636,7 @@ export async function daftarForumAdmin(
   jenjang: Jenjang,
   eventId: string
 ): Promise<ForumRingkas> {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   return ambilRingkasForum(client as unknown as KlienForumMentah, eventId);
 }
 

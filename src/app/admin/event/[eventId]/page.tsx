@@ -97,13 +97,14 @@ function formatWaktu(iso: string) {
   });
 }
 
-export default async function EventDetailPage({
-  params,
-  searchParams,
-}: {
-  params: { eventId: string };
-  searchParams: { jenjang?: string };
-}) {
+export default async function EventDetailPage(
+  props: {
+    params: Promise<{ eventId: string }>;
+    searchParams: Promise<{ jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const sesi = await getSesiGuru();
   const jenjangQuery = parseJenjang(searchParams.jenjang);
 
@@ -137,7 +138,7 @@ async function DetailGuru({
   isAdmin: boolean;
   jenjangSesi: Jenjang | null;
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Dua tahap: kolom `jenis` (migrasi 0018) belum tentu ada di project ini.
   const lengkap = await supabase
@@ -257,7 +258,7 @@ async function DetailGuru({
 }
 
 async function muatMapelGuru(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   eventId: string
 ): Promise<MapelAdminRingkas[]> {
   const { data: mapelList } = await supabase

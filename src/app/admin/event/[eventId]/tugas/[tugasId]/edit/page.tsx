@@ -5,12 +5,13 @@ import { untukInputDatetime } from "@/lib/tugas";
 import TugasForm, { type KelasPilihan } from "../../TugasForm";
 import { aiSiapJenjang } from "@/lib/ai/akses";
 
-export default async function TugasEditPage({
-  params,
-}: {
-  params: { eventId: string; tugasId: string };
-}) {
-  const supabase = createClient();
+export default async function TugasEditPage(
+  props: {
+    params: Promise<{ eventId: string; tugasId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: tugas } = await supabase
     .from("tugas")

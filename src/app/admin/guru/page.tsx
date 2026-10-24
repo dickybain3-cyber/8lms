@@ -33,16 +33,17 @@ function formatTanggal(iso: string) {
  * biasa — lebih cepat dan tidak lagi butuh service role key hanya
  * untuk menampilkan daftar.
  */
-export default async function GuruPage({
-  searchParams,
-}: {
-  searchParams: {
-    cari?: string;
-    cursorNama?: string;
-    cursorId?: string;
-  };
-}) {
-  const supabase = createClient();
+export default async function GuruPage(
+  props: {
+    searchParams: Promise<{
+      cari?: string;
+      cursorNama?: string;
+      cursorId?: string;
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const supabase = await createClient();
   // Tombol "Unduh detail guru" (Tahap 2) khusus is_admin — kolomnya berisi
   // status password, jadi disembunyikan untuk guru biasa. Ini cuma soal
   // TAMPILAN; penjaga sungguhan ada di server action `ambilDetailGuruSemuaJenjang()`

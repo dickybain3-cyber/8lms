@@ -15,12 +15,13 @@ import { aiSiapJenjang } from "@/lib/ai/akses";
  * untuk menyampaikan "kamu salah kamar" — apalagi setelah guru mengetik
  * instruksi tugas sepanjang dua paragraf.
  */
-export default async function TugasBaruPage({
-  params,
-}: {
-  params: { eventId: string };
-}) {
-  const supabase = createClient();
+export default async function TugasBaruPage(
+  props: {
+    params: Promise<{ eventId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const lengkap = await supabase
     .from("event")

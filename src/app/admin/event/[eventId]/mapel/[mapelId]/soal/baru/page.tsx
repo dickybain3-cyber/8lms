@@ -40,7 +40,7 @@ import { aiSiapJenjang } from "@/lib/ai/akses";
  * database tiap simpan hanya menambah jeda di antara dua soal.
  */
 async function hitungSoal(
-  client: ReturnType<typeof createClient> | ReturnType<typeof createAdminClient>,
+  client: Awaited<ReturnType<typeof createClient>> | Awaited<ReturnType<typeof createAdminClient>>,
   mapelId: string
 ): Promise<number> {
   const { count } = await client
@@ -50,19 +50,20 @@ async function hitungSoal(
   return count ?? 0;
 }
 
-export default async function SoalBaruPage({
-  params,
-  searchParams,
-}: {
-  params: { eventId: string; mapelId: string };
-  searchParams: { jenjang?: string };
-}) {
+export default async function SoalBaruPage(
+  props: {
+    params: Promise<{ eventId: string; mapelId: string }>;
+    searchParams: Promise<{ jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const sesi = await getSesiGuru();
   const jenjangQuery = parseJenjang(searchParams.jenjang);
   const modeAdmin = sesi.isAdmin && jenjangQuery !== null;
 
   const jenjang = modeAdmin ? (jenjangQuery as Jenjang) : undefined;
-  const client = jenjang ? createAdminClient(jenjang) : createClient();
+  const client = jenjang ? await createAdminClient(jenjang) : await createClient();
 
   const { data: mapel } = await client
     .from("mapel")

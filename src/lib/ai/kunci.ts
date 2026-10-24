@@ -26,7 +26,7 @@ export async function kunciDariDatabase(
 
   try {
     const { createAdminClient } = await import("@/lib/supabase/admin");
-    const client = createAdminClient(jenjang);
+    const client = await createAdminClient(jenjang);
     const { data, error } = await client
       .from("ai_kunci")
       .select("kunci")

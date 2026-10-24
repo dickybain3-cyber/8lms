@@ -15,12 +15,13 @@ import ForumTopikForm, { type KelasPilihan } from "../ForumTopikForm";
  * akan ditolak saat disimpan — lihat `createForumTopik` untuk penjagaan
  * sisi Server Action-nya.
  */
-export default async function ForumBaruPage({
-  params,
-}: {
-  params: { eventId: string };
-}) {
-  const supabase = createClient();
+export default async function ForumBaruPage(
+  props: {
+    params: Promise<{ eventId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const lengkap = await supabase
     .from("event")

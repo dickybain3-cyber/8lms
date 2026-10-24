@@ -68,7 +68,7 @@ type SoalRow = {
  * ini penting.
  */
 async function muatDataMapel(
-  client: ReturnType<typeof createClient> | ReturnType<typeof createAdminClient>,
+  client: Awaited<ReturnType<typeof createClient>> | Awaited<ReturnType<typeof createAdminClient>>,
   eventId: string,
   mapelId: string
 ): Promise<{
@@ -176,7 +176,7 @@ async function IsiHalamanMapel({
   const { mapel, soalList, totalSkor, jumlahSudahSubmit, dampakHapusMapel } = data;
   const qs = jenjang ? `?jenjang=${jenjang}` : "";
   const adaSoal = soalList.length > 0;
-  const jenjangData = jenjang ?? getJenjangFromServerCookies();
+  const jenjangData = jenjang ?? await getJenjangFromServerCookies();
   const aiSiap = await aiSiapJenjang(jenjangData);
   const generatorAi = (varian: "tombol" | "kartu") => (
     <GeneratorSoalAi
@@ -442,7 +442,7 @@ async function IsiHalamanMapel({
 
 /**
  * Jalur ADMIN — dipilih di bawah lewat `sesi.isAdmin`. SELALU memakai
- * `createAdminClient(jenjang)` (service_role) lewat `muatDataMapel()` di
+ * `await createAdminClient(jenjang)` (service_role) lewat `muatDataMapel()` di
  * atas, TERMASUK saat `jenjang` yang dilihat sama dengan jenjang sesi
  * login admin sendiri — konsisten dengan pola yang sudah dipakai
  * `<NilaiTable>` (lihat komentar `simpan()` di sana): satu jalur kode
@@ -460,7 +460,7 @@ async function MapelDetailAdmin({
   mapelId: string;
   jenjangSesi: Jenjang | null;
 }) {
-  const client = createAdminClient(jenjang);
+  const client = await createAdminClient(jenjang);
   const data = await muatDataMapel(client, eventId, mapelId);
 
   if (!data) {
@@ -498,7 +498,7 @@ async function MapelDetailGuru({
   eventId: string;
   mapelId: string;
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const data = await muatDataMapel(supabase, eventId, mapelId);
 
   if (!data) {
@@ -525,13 +525,14 @@ async function MapelDetailGuru({
   );
 }
 
-export default async function MapelDetailPage({
-  params,
-  searchParams,
-}: {
-  params: { eventId: string; mapelId: string };
-  searchParams: { jenjang?: string };
-}) {
+export default async function MapelDetailPage(
+  props: {
+    params: Promise<{ eventId: string; mapelId: string }>;
+    searchParams: Promise<{ jenjang?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const sesi = await getSesiGuru();
   const jenjangQuery = parseJenjang(searchParams.jenjang);
 

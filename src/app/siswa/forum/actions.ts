@@ -85,7 +85,7 @@ export async function kirimPesanSiswa(
     return { error: "Pesan yang dibalas tidak valid." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
@@ -125,7 +125,7 @@ export async function kirimPesanSiswa(
   if (jenisIsi === "gambar") {
     let cloudName = "";
     try {
-      const jenjang = getJenjangFromServerCookies();
+      const jenjang = await getJenjangFromServerCookies();
       if (jenjang) cloudName = getCloudinaryConfig(jenjang).cloudName;
     } catch {
       // variabel env Cloudinary jenjang ini belum lengkap — ditangani di bawah

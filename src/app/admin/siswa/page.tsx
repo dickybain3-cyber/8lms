@@ -20,17 +20,18 @@ function formatTanggal(iso: string) {
   });
 }
 
-export default async function SiswaPage({
-  searchParams,
-}: {
-  searchParams: {
-    cari?: string;
-    kelasId?: string;
-    cursorNama?: string; // nama baris terakhir dari halaman sebelumnya
-    cursorId?: string; // id baris terakhir — tie-breaker, karena nama BISA duplikat
-  };
-}) {
-  const supabase = createClient();
+export default async function SiswaPage(
+  props: {
+    searchParams: Promise<{
+      cari?: string;
+      kelasId?: string;
+      cursorNama?: string; // nama baris terakhir dari halaman sebelumnya
+      cursorId?: string; // id baris terakhir — tie-breaker, karena nama BISA duplikat
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const supabase = await createClient();
 
   const { data: kelasList } = await supabase
     .from("kelas")

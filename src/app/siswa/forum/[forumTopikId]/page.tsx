@@ -14,12 +14,13 @@ import { kelompokkanReaksi, type BarisReaksi } from "@/components/forum/ReaksiPe
  * bawah ini cuma akan pulang kosong, bukan menampilkan data yang bukan
  * haknya.
  */
-export default async function ForumSiswaPage({
-  params,
-}: {
-  params: { forumTopikId: string };
-}) {
-  const supabase = createClient();
+export default async function ForumSiswaPage(
+  props: {
+    params: Promise<{ forumTopikId: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const {
     data: { user },
