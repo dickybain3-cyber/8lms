@@ -85,41 +85,122 @@ export function emailSiswaDariUsername(username: string): string {
   return `${normalkanUsername(username)}${suffixEmailSiswa()}`;
 }
 
+// ---------------------------------------------------------------------------
+// Akun siswa: username dari nama + password acak pendek (migrasi 0023)
+// ---------------------------------------------------------------------------
+// Menggantikan login "pilih nama + tanggal lahir". Tanggal lahir rahasia
+// yang lemah: teman sekelas tahu, dan tercetak di banyak dokumen sekolah.
+//
+// Aturan di bawah DISALIN PERSIS di SQL
+// `supabase/migrations-baru/0023_login_siswa_username.sql`
+// (`lms_username_dasar`, `lms_password_siswa`). Kalau salah satu diubah,
+// ubah keduanya — kalau tidak, akun dari panel admin dan akun dari SQL
+// Editor punya bentuk username yang berbeda untuk nama yang sama.
+
 /**
- * Kata sandi siswa dari tanggal lahir: "DDMMYYYY".
- *
- * Formatnya angka polos, MENGIKUTI apa yang sudah dipakai
- * `LoginForm.tsx` — bukan varian "Lms#DDMMYYYY" yang ada di
- * `Action.ts`. Dipilih yang ini karena inilah format yang dipakai akun
- * siswa yang sudah terlanjur ada di database; mengubah standarnya
- * sekarang berarti seluruh akun lama harus direset dalam satu malam.
- *
- * PERINGATAN kalau nanti mau mengganti formatnya: project Supabase yang
- * mengaktifkan syarat kompleksitas kata sandi (Authentication >
- * Providers > Password > Minimum requirements) akan MENOLAK delapan
- * digit angka polos, dan penolakannya muncul sebagai kegagalan
- * `createUser` yang pesannya tidak menyebut-nyebut kompleksitas. Kalau
- * penambahan siswa manual gagal dengan alasan yang tidak masuk akal,
- * periksa setelan itu lebih dulu.
+ * Kata depan nama yang dilompati supaya username tidak menumpuk di
+ * "muhammad" / "siti". Hanya dilompati kalau masih ada kata sesudahnya:
+ * siswa bernama "Muhammad" saja tetap jadi "muhammad".
  */
-export function passwordDariTanggalLahir(
-  tanggal: string,
-  bulan: string,
-  tahun: string
-): string {
-  return `${String(tanggal).padStart(2, "0")}${String(bulan).padStart(
-    2,
-    "0"
-  )}${tahun}`;
+const AWALAN_NAMA = new Set([
+  "muhammad", "muhamad", "muhammat", "mohammad", "mohamad", "mohammed",
+  "muhammed", "mochammad", "mochamad", "mochamat", "moch", "moh", "muh",
+  "mhd", "mohd", "md", "m", "siti",
+]);
+
+/** Panjang maksimal bagian nama di username (sebelum inisial/angka). */
+export const USERNAME_SISWA_DASAR_MAKS = 8;
+
+/**
+ * Nama -> bagian dasar username + inisial kata sesudahnya.
+ *
+ *   "Muhammad Rizki Pratama" -> { dasar: "rizki",    inisial: "p"  }
+ *   "Siti Nur Aisyah"        -> { dasar: "nur",      inisial: "a"  }
+ *   "Al Fatih Ramadhan"      -> { dasar: "alfatih",  inisial: "r"  }
+ *   "Ma'ruf Amin"            -> { dasar: "maruf",    inisial: "a"  }
+ *   "Kurniawati Dwi Lestari" -> { dasar: "kurniawa", inisial: "dl" }
+ *
+ * Kata pertama yang pendek (< 3 huruf, mis. "Al") disambung kata
+ * berikutnya. Nama tanpa huruf sama sekali jadi "siswa".
+ */
+export function usernameDasarDariNama(nama: string): {
+  dasar: string;
+  inisial: string;
+} {
+  const kata = String(nama ?? "")
+    .toLowerCase()
+    .replace(/['`’]/g, "")
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+  if (kata.length === 0) return { dasar: "siswa", inisial: "" };
+
+  let i = 0;
+  while (i < kata.length - 1 && AWALAN_NAMA.has(kata[i])) i++;
+
+  let dasar = "";
+  while (i < kata.length && dasar.length < 3) dasar += kata[i++];
+  dasar = dasar.slice(0, USERNAME_SISWA_DASAR_MAKS);
+
+  let inisial = "";
+  while (i < kata.length && inisial.length < 2) inisial += kata[i++][0];
+
+  return { dasar, inisial };
 }
 
-/** "2012-05-14" -> "14052012". Mengembalikan null kalau formatnya bukan ISO. */
-export function passwordDariTanggalISO(iso: string): string | null {
-  const s = String(iso ?? "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const [tahun, bulan, tanggal] = s.split("-");
-  return `${tanggal}${bulan}${tahun}`;
+/**
+ * Urutan calon username untuk satu nama: "rizki", "rizkip", "rizki2",
+ * "rizki3", ... Yang dipakai adalah calon pertama yang belum terpakai.
+ */
+export function* kandidatUsernameSiswa(nama: string): Generator<string> {
+  const { dasar, inisial } = usernameDasarDariNama(nama);
+  yield dasar;
+  if (inisial) yield dasar + inisial;
+  for (let n = 2; n <= 999; n++) yield `${dasar}${n}`;
 }
+
+/** Calon username pertama yang tidak ada di `terpakai` (huruf kecil). */
+export function pilihUsernameSiswa(
+  nama: string,
+  terpakai: ReadonlySet<string>
+): string {
+  for (const calon of kandidatUsernameSiswa(nama)) {
+    if (!terpakai.has(calon)) return calon;
+  }
+  throw new Error(`Tidak ada username tersisa untuk nama "${nama}".`);
+}
+
+/** Tanpa i, l, o — supaya tidak tertukar dengan 1 dan 0 saat dibaca dari kartu. */
+const HURUF_PASSWORD = "abcdefghjkmnpqrstuvwxyz";
+const ANGKA_PASSWORD = "0123456789";
+
+/** Pola password siswa: 3 huruf kecil lalu 3 angka, mis. "kmr482". */
+export const POLA_PASSWORD_SISWA = /^[a-z]{3}[0-9]{3}$/;
+
+/**
+ * Password siswa: 3 huruf kecil + 3 angka (mis. "kmr482"). Sengaja pendek
+ * supaya bisa disalin anak SMP dari kartu tanpa salah ketik; tetap acak per
+ * siswa (±12 juta kemungkinan) dan percobaan login dibatasi Supabase Auth.
+ *
+ * Panjang 6 = batas minimum bawaan Supabase Auth. Kalau project menaikkan
+ * syarat password (Authentication > Providers > Email), `createUser` di
+ * panel admin akan menolak password ini — jalur SQL (0023) tidak terkena
+ * karena menulis hash langsung.
+ */
+export function buatPasswordSiswa(): string {
+  const acak = crypto.getRandomValues(new Uint32Array(6));
+  let out = "";
+  for (let i = 0; i < 3; i++) out += HURUF_PASSWORD[acak[i] % HURUF_PASSWORD.length];
+  for (let i = 3; i < 6; i++) out += ANGKA_PASSWORD[acak[i] % ANGKA_PASSWORD.length];
+  return out;
+}
+
+/**
+ * Penanda di `auth.users.raw_app_meta_data` bahwa akun siswa ini sudah
+ * memakai login username + password baru. Dibaca oleh
+ * `siapkan_akun_siswa()` (0023) supaya akun yang dibuat dari panel admin
+ * tidak ikut direset saat SQL itu dijalankan ulang.
+ */
+export const PENANDA_AKUN_SISWA = { lms_login: "username" } as const;
 
 /**
  * Validasi NIP longgar: 8-25 digit angka.

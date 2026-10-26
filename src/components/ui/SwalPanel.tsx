@@ -128,10 +128,9 @@ export interface SapaanData {
  * Ditampilkan SEBELUM pindah halaman, lalu menutup sendiri setelah
  * beberapa detik. Fungsinya bukan hiasan: ini satu-satunya titik di
  * seluruh aplikasi yang memberi tahu siswa bahwa dia masuk sebagai
- * ORANG YANG BENAR. Alur login siswa memakai pilih-nama dari daftar
- * sekelas, jadi salah pilih nama teman yang tanggal lahirnya kebetulan
- * sama bukan hal mustahil — dan kalau tidak ketahuan di sini, baru
- * ketahuan setelah ujiannya terlanjur dikerjakan atas nama orang lain.
+ * ORANG YANG BENAR. Kartu login siswa bisa tertukar dengan teman
+ * sebangku — dan kalau tidak ketahuan di sini, baru ketahuan setelah
+ * ujiannya terlanjur dikerjakan atas nama orang lain.
  *
  * Kelas ikut ditampilkan untuk siswa dengan alasan yang sama. Untuk
  * guru dan admin, kelas tidak relevan (mereka tidak terikat satu

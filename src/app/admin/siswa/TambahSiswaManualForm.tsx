@@ -9,11 +9,9 @@ import { tambahSiswaManual } from "./actions";
  * untuk kasus siswa pindahan atau susulan pendaftaran yang datang satu-
  * dua orang di tengah semester.
  *
- * Password TIDAK diminta dari admin — diturunkan otomatis dari tanggal
- * lahir (format DDMMYYYY, sama seperti yang dipakai `LoginForm.tsx`),
- * supaya siswa langsung bisa login lewat alur normal ("pilih nama,
- * ketik tanggal lahir") tanpa admin perlu menyampaikan password
- * terpisah lewat jalur lain.
+ * Password TIDAK diminta dari admin — dibuat acak 3 huruf + 3 angka dan
+ * ditampilkan sekali di sini untuk ditulis di kartu login siswa. Username
+ * boleh dikosongkan: dibuat otomatis dari nama (lihat `src/lib/akun.ts`).
  */
 export default function TambahSiswaManualForm({
   kelasList,
@@ -24,7 +22,6 @@ export default function TambahSiswaManualForm({
   const [nama, setNama] = useState("");
   const [username, setUsername] = useState("");
   const [kelasId, setKelasId] = useState(kelasList[0]?.id ?? "");
-  const [tanggalLahir, setTanggalLahir] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasil, setHasil] = useState<{ username: string; password: string } | null>(
@@ -37,7 +34,7 @@ export default function TambahSiswaManualForm({
     setError(null);
     setHasil(null);
 
-    const res = await tambahSiswaManual(nama, username, kelasId, tanggalLahir);
+    const res = await tambahSiswaManual(nama, username, kelasId);
     setLoading(false);
 
     if (!res.success) {
@@ -48,7 +45,6 @@ export default function TambahSiswaManualForm({
     setHasil({ username: res.username, password: res.password });
     setNama("");
     setUsername("");
-    setTanggalLahir("");
     router.refresh();
   }
 
@@ -59,8 +55,8 @@ export default function TambahSiswaManualForm({
         Tambah Siswa Manual
       </h2>
       <p className="mb-4 text-xs text-ink/50">
-        Password otomatis dari tanggal lahir (format DDMMYYYY) — sama
-        seperti yang dipakai siswa untuk login sehari-hari.
+        Username dari nama (boleh diisi sendiri), password acak 3 huruf +
+        3 angka — siswa login dengan keduanya.
       </p>
 
       <form onSubmit={submit} className="space-y-3">
@@ -81,14 +77,13 @@ export default function TambahSiswaManualForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-ink/60">
-              Username
+              Username <span className="font-normal text-ink/40">(opsional)</span>
             </label>
             <input
               type="text"
-              required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="mis. ahmad.fauzi"
+              placeholder="otomatis dari nama"
               className="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink/30"
             />
           </div>
@@ -110,19 +105,6 @@ export default function TambahSiswaManualForm({
               ))}
             </select>
           </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium text-ink/60">
-            Tanggal Lahir
-          </label>
-          <input
-            type="date"
-            required
-            value={tanggalLahir}
-            onChange={(e) => setTanggalLahir(e.target.value)}
-            className="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm text-ink"
-          />
         </div>
 
         {error && (
@@ -159,8 +141,8 @@ export default function TambahSiswaManualForm({
             Password: <code className="rounded bg-white px-1">{hasil.password}</code>
           </p>
           <p className="mt-1 text-emerald-700/70">
-            Password ini sama dengan tanggal lahir yang diisi — siswa
-            login lewat halaman biasa, tidak perlu diketik ulang di sini.
+            Password hanya tampil sekali — catat sekarang untuk kartu login
+            siswa. Kalau terlewat, pakai tombol Reset password di tabel.
           </p>
         </div>
       )}

@@ -18,14 +18,9 @@ type Status = "idle" | "parsed" | "running" | "done";
  * `ImportGuruForm.tsx` — lihat komentar di sana untuk alasan lengkap
  * kenapa dibaca di browser, bukan dikirim sebagai file mentah).
  *
- * Kolom "Tanggal Lahir" BARU ditambahkan di sini. Sebelumnya import
- * siswa memberi password ACAK ke setiap akun — yang berarti siswa itu
- * TIDAK BISA login lewat alur normal (pilih nama, ketik tanggal lahir)
- * yang dipakai `LoginForm.tsx`, sampai adminnya reset password satu-
- * satu secara manual setelah import. Dengan kolom ini terisi, password
- * akun mengikuti konvensi yang sama seperti akun yang dibuat manual.
- * Baris yang tetap tanpa tanggal lahir masih bisa diimpor (password
- * acaknya jadi fallback), tapi ditandai jelas di ringkasan hasil.
+ * Kolom Username boleh kosong (atau tidak ada sama sekali): username
+ * dibuat dari nama. Password setiap akun acak 3 huruf + 3 angka dan hanya
+ * ada di CSV hasil — unduh sebelum meninggalkan halaman.
  */
 export default function ImportSiswaForm({
   kelasList,
@@ -66,7 +61,6 @@ export default function ImportSiswaForm({
         nama: r.nama,
         username: r.username,
         kelas: r.kelas,
-        tanggalLahir: r.tanggalLahir || undefined,
       }))
     );
     setResults([]);
@@ -95,28 +89,25 @@ export default function ImportSiswaForm({
         nama: "Siswa",
         judul: "Template Import Data Siswa",
         subjudul:
-          "Kelas harus PERSIS sama dengan nama kelas yang sudah ada (mis. 7.1). Tanggal lahir format DD-MM-YYYY.",
+          "Kelas harus PERSIS sama dengan nama kelas yang sudah ada (mis. 7.1). Username boleh dikosongkan — dibuat otomatis dari nama.",
         kolom: [
           { header: "No", key: "no", lebar: 6, tengah: true },
           { header: "Nama", key: "nama", lebar: 30 },
           { header: "Username", key: "username", lebar: 22 },
           { header: "Kelas", key: "kelas", lebar: 10, tengah: true },
-          { header: "Tanggal Lahir", key: "tanggalLahir", lebar: 16, tengah: true },
         ],
         baris: [
           {
             no: 1,
             nama: "Ahmad Fauzi",
-            username: "ahmad.fauzi",
+            username: "",
             kelas: kelasList[0]?.nama ?? "7.1",
-            tanggalLahir: "14-05-2012",
           },
           {
             no: 2,
             nama: "Siti Nurhaliza",
-            username: "siti.nurhaliza",
+            username: "",
             kelas: kelasList[0]?.nama ?? "7.1",
-            tanggalLahir: "22-11-2012",
           },
         ],
       },
@@ -125,13 +116,11 @@ export default function ImportSiswaForm({
 
   function downloadHasil() {
     const berhasil = results.filter((r) => r.status === "berhasil");
-    const header = "nama,username,password,kelas,login_tanggal_lahir\n";
+    const header = "nama,username,password,kelas\n";
     const body = berhasil
       .map((r) => {
         if (r.status !== "berhasil") return "";
-        return `"${r.nama}","${r.username}","${r.password}","${r.kelasNama}","${
-          r.passwordDariTanggalLahir ? "ya" : "tidak"
-        }"`;
+        return `"${r.nama}","${r.username}","${r.password}","${r.kelasNama}"`;
       })
       .join("\n");
     const blob = new Blob([header + body], { type: "text/csv;charset=utf-8;" });
@@ -154,9 +143,6 @@ export default function ImportSiswaForm({
 
   const jumlahBerhasil = results.filter((r) => r.status === "berhasil").length;
   const jumlahDilewati = results.filter((r) => r.status === "dilewati").length;
-  const jumlahPasswordAcak = results.filter(
-    (r) => r.status === "berhasil" && !r.passwordDariTanggalLahir
-  ).length;
 
   return (
     <div className="card-mewah space-y-5 p-5">
@@ -166,8 +152,8 @@ export default function ImportSiswaForm({
           Import Siswa dari Excel
         </h2>
         <p className="text-xs text-ink/50">
-          Kolom: Nama, Username, Kelas, Tanggal Lahir (opsional tapi
-          disarankan — dipakai sebagai password login).
+          Kolom: Nama, Kelas, Username (opsional — kosong = dibuat dari
+          nama). Password dibuat acak 3 huruf + 3 angka.
         </p>
       </div>
 
@@ -269,16 +255,6 @@ export default function ImportSiswaForm({
               <p className="text-xs text-ink/60">baris dilewati</p>
             </div>
           </div>
-
-          {jumlahPasswordAcak > 0 && (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-ink/70">
-              <i className="fas fa-triangle-exclamation mr-1.5 text-amber-500" aria-hidden />
-              {jumlahPasswordAcak} akun tidak punya tanggal lahir yang valid
-              di file, jadi passwordnya ACAK (bukan tanggal lahir) — siswa
-              itu tidak bisa login dengan cara biasa sampai kamu memberi
-              tahu password acaknya, atau reset lewat tabel di bawah.
-            </p>
-          )}
 
           {jumlahBerhasil > 0 && (
             <>

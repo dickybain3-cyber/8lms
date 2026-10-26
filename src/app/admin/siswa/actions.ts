@@ -4,26 +4,19 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
+  PENANDA_AKUN_SISWA,
+  buatPasswordSiswa,
   emailSiswaDariUsername,
   normalkanUsername,
-  passwordDariTanggalISO,
+  pilihUsernameSiswa,
 } from "@/lib/akun";
 
 export type ImportSiswaInputRow = {
   nomorBaris: number; // nomor baris asli di file (1-based, header tidak dihitung) — untuk pesan error yang bisa ditelusuri guru
   nama: string;
+  /** Kosong = dibuat otomatis dari nama (lihat `pilihUsernameSiswa`). */
   username: string;
   kelas: string;
-  /**
-   * "YYYY-MM-DD", opsional. Kalau terisi, password akun mengikuti
-   * konvensi login siswa yang sesungguhnya (DDMMYYYY — lihat
-   * `LoginForm.tsx` dan `src/lib/akun.ts`), BUKAN password acak. Kalau
-   * kosong/tidak valid, jatuh ke password acak seperti sebelumnya —
-   * siswa itu tidak akan bisa login dengan tanggal lahir sampai
-   * passwordnya di-reset manual, dan itu ditandai jelas di kolom
-   * ringkasan hasil import.
-   */
-  tanggalLahir?: string;
 };
 
 export type ImportSiswaRowResult =
@@ -34,11 +27,6 @@ export type ImportSiswaRowResult =
       username: string;
       kelasNama: string;
       password: string;
-      /** true kalau password = tanggal lahir (siswa bisa login normal
-       *  lewat form biasa); false kalau password acak (tanggal lahir
-       *  kosong/tidak valid di file — siswa ini TIDAK bisa login pakai
-       *  tanggal lahir sampai adminnya reset password manual). */
-      passwordDariTanggalLahir: boolean;
     }
   | {
       status: "dilewati";
@@ -48,23 +36,57 @@ export type ImportSiswaRowResult =
       alasan: string;
     };
 
+type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
+
+/** Semua username siswa di project ini (huruf kecil), untuk memilih username otomatis. */
+async function ambilUsernameTerpakai(admin: AdminClient): Promise<Set<string>> {
+  const { data } = await admin.from("siswa").select("username");
+  return new Set((data ?? []).map((s) => String(s.username).toLowerCase()));
+}
+
 /**
- * Generate password acak (12 karakter, campuran huruf+angka, tanpa
- * karakter ambigu 0/O/1/l/I) — dipilih random-per-siswa (bukan password
- * seragam) supaya satu password bocor tidak membuka akses ke seluruh
- * kelas. Trade-off: guru WAJIB menyalin/mengunduh hasilnya sebelum
- * meninggalkan halaman (lihat tombol "Download CSV hasil" di UI) karena
- * password ini tidak disimpan plaintext di mana pun setelah di-hash oleh
- * Supabase Auth — kalau hilang, satu-satunya jalan adalah reset password,
- * bukan lihat ulang.
+ * Buat akun Supabase Auth untuk satu siswa.
+ *
+ * `usernameDiminta` kosong = username dibuat dari nama. Kalau email hasil
+ * username otomatis ternyata sudah dipegang akun auth lain (sisa siswa yang
+ * barisnya dihapus lewat SQL), calon berikutnya dicoba. Username yang
+ * diketik admin tidak pernah diganti diam-diam — bentrok = gagal.
+ *
+ * Password: 3 huruf + 3 angka (`buatPasswordSiswa`), tampil sekali ke admin
+ * lalu hanya tersimpan sebagai hash di Supabase Auth.
  */
-function generatePassword(): string {
-  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < 12; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
+async function buatAkunAuthSiswa(
+  admin: AdminClient,
+  nama: string,
+  usernameDiminta: string,
+  terpakai: Set<string>,
+  password: string
+): Promise<
+  { ok: true; userId: string; username: string } | { ok: false; pesan: string }
+> {
+  for (let percobaan = 0; percobaan < 5; percobaan++) {
+    const username = usernameDiminta || pilihUsernameSiswa(nama, terpakai);
+    const { data, error } = await admin.auth.admin.createUser({
+      email: emailSiswaDariUsername(username),
+      password,
+      email_confirm: true,
+      app_metadata: PENANDA_AKUN_SISWA,
+    });
+    if (data?.user) return { ok: true, userId: data.user.id, username };
+
+    const bentrok = /already|registered|exists/i.test(error?.message ?? "");
+    if (usernameDiminta || !bentrok) {
+      return {
+        ok: false,
+        pesan: `Gagal membuat akun auth: ${error?.message ?? "tidak diketahui"}.`,
+      };
+    }
+    terpakai.add(username);
   }
-  return out;
+  return {
+    ok: false,
+    pesan: "Gagal membuat akun auth: username otomatis terus bentrok dengan akun lama.",
+  };
 }
 
 /**
@@ -106,9 +128,6 @@ export async function importSiswaBatch(
     }));
   }
 
-  const emailSuffix =
-    process.env.NEXT_PUBLIC_SISWA_EMAIL_SUFFIX ?? "@siswa.lms-cbt.local";
-
   let admin;
   try {
     admin = await createAdminClient();
@@ -127,7 +146,7 @@ export async function importSiswaBatch(
 
   // Analisis race condition dua guru import bersamaan dengan username sama
   // persis (nunggak sejak Sesi 6-7, dianalisis Sesi 10): pre-check di bawah
-  // ini ("usernameSudahAda") HANYA optimisasi supaya baris yang sudah pasti
+  // ini ("terpakai") HANYA optimisasi supaya baris yang sudah pasti
   // bentrok tidak perlu memanggil `auth.admin.createUser` sia-sia — ini
   // BUKAN satu-satunya lapisan perlindungan. `siswa.username` punya
   // constraint `unique` di level DB (0001_init.sql) yang tetap berlaku
@@ -141,28 +160,26 @@ export async function importSiswaBatch(
   // dengan dua request sungguhan bersamaan ke project Supabase asli (masih
   // nunggak, lihat README/PROMPT-SESI-11.md), tapi itu soal verifikasi,
   // bukan soal ada-tidaknya perlindungan.
-  const usernamesDiBatch = rows.map((r) => r.username.trim()).filter(Boolean);
-  const { data: siswaExisting } = await admin
-    .from("siswa")
-    .select("username")
-    .in("username", usernamesDiBatch.length > 0 ? usernamesDiBatch : [""]);
-  const usernameSudahAda = new Set((siswaExisting ?? []).map((s) => s.username));
+  //
+  // Seluruh username project dimuat sekali (±200 baris per jenjang), bukan
+  // hanya yang ada di batch: username otomatis harus menghindari SEMUA
+  // username yang sudah ada, dan bertambah tiap baris yang berhasil.
+  const terpakai = await ambilUsernameTerpakai(admin);
 
   const results: ImportSiswaRowResult[] = [];
-  const usernameDipakaiDiBatchIni = new Set<string>();
 
   for (const row of rows) {
     const nama = row.nama.trim();
-    const username = row.username.trim();
+    const usernameDiminta = normalkanUsername(row.username);
     const kelasNamaInput = row.kelas.trim();
 
-    if (!nama || !username || !kelasNamaInput) {
+    if (!nama || !kelasNamaInput) {
       results.push({
         status: "dilewati",
         nomorBaris: row.nomorBaris,
         nama,
-        username,
-        alasan: "Data tidak lengkap (nama/username/kelas ada yang kosong), dilewati.",
+        username: usernameDiminta,
+        alasan: "Data tidak lengkap (nama/kelas ada yang kosong), dilewati.",
       });
       continue;
     }
@@ -173,61 +190,50 @@ export async function importSiswaBatch(
         status: "dilewati",
         nomorBaris: row.nomorBaris,
         nama,
-        username,
+        username: usernameDiminta,
         alasan: `Kelas '${kelasNamaInput}' tidak ditemukan, dilewati.`,
       });
       continue;
     }
 
-    if (usernameSudahAda.has(username) || usernameDipakaiDiBatchIni.has(username)) {
+    if (usernameDiminta && terpakai.has(usernameDiminta)) {
       results.push({
         status: "dilewati",
         nomorBaris: row.nomorBaris,
         nama,
-        username,
-        alasan: `Username '${username}' sudah dipakai, dilewati.`,
+        username: usernameDiminta,
+        alasan: `Username '${usernameDiminta}' sudah dipakai, dilewati. Kosongkan kolom Username supaya dibuat otomatis dari nama.`,
       });
       continue;
     }
 
-    const passwordDariTanggal = row.tanggalLahir
-      ? passwordDariTanggalISO(row.tanggalLahir)
-      : null;
-    const password = passwordDariTanggal ?? generatePassword();
-    const email = `${username}${emailSuffix}`;
-
-    const { data: created, error: createError } =
-      await admin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-      });
-
-    if (createError || !created?.user) {
+    const password = buatPasswordSiswa();
+    const akun = await buatAkunAuthSiswa(admin, nama, usernameDiminta, terpakai, password);
+    if (!akun.ok) {
       results.push({
         status: "dilewati",
         nomorBaris: row.nomorBaris,
         nama,
-        username,
-        alasan: `Gagal membuat akun auth: ${createError?.message ?? "tidak diketahui"}.`,
+        username: usernameDiminta,
+        alasan: akun.pesan,
       });
       continue;
     }
+    const { username } = akun;
 
     const { error: insertError } = await admin.from("siswa").insert({
-      auth_id: created.user.id,
+      auth_id: akun.userId,
       nama,
       kelas_id: kelasId,
       username,
-      tanggal_lahir: passwordDariTanggal ? row.tanggalLahir : null,
     });
 
     if (insertError) {
       const { error: rollbackError } = await admin.auth.admin.deleteUser(
-        created.user.id
+        akun.userId
       );
       const rollbackMsg = rollbackError
-        ? ` Rollback akun auth JUGA GAGAL (id: ${created.user.id}) — perlu dihapus manual lewat dashboard Supabase Auth.`
+        ? ` Rollback akun auth JUGA GAGAL (id: ${akun.userId}) — perlu dihapus manual lewat dashboard Supabase Auth.`
         : " Akun auth sudah di-rollback (dihapus lagi) otomatis.";
       results.push({
         status: "dilewati",
@@ -239,7 +245,7 @@ export async function importSiswaBatch(
       continue;
     }
 
-    usernameDipakaiDiBatchIni.add(username);
+    terpakai.add(username);
     results.push({
       status: "berhasil",
       nomorBaris: row.nomorBaris,
@@ -247,7 +253,6 @@ export async function importSiswaBatch(
       username,
       kelasNama: kelasNamaInput,
       password,
-      passwordDariTanggalLahir: Boolean(passwordDariTanggal),
     });
   }
 
@@ -290,20 +295,14 @@ export type ResetPasswordResult =
  * password adalah reset manual lewat dashboard Supabase Auth, tidak ada
  * tombol di aplikasi sama sekali.
  *
- * Pola auth/otorisasi & generate password SENGAJA disalin persis dari
- * `importSiswaBatch` di atas (guard "pemanggil harus guru login" +
- * `generatePassword()` acak 12 karakter) — bukan diekstrak jadi helper
- * bersama, karena keduanya kebetulan sama sekarang tapi bisa saja
- * berbeda kebutuhannya nanti (mis. reset butuh syarat tambahan seperti
- * cooldown, import tidak). Kalau nanti terbukti selalu identik, boleh
- * disatukan di sesi mendatang.
+ * Pola auth/otorisasi SENGAJA disalin persis dari `importSiswaBatch` di
+ * atas (guard "pemanggil harus guru login"); password baru dari
+ * `buatPasswordSiswa()` (3 huruf + 3 angka), sama seperti import.
  *
- * Beda dari import: di sini TIDAK ada createUser/rollback sama sekali —
- * akun auth-nya sudah ada, jadi cukup satu panggilan
- * `admin.auth.admin.updateUserById(..., { password })`. Tidak ada jalur
- * "gagal setengah jalan" yang butuh rollback seperti import, karena cuma
- * satu operasi tunggal (update password), bukan create+insert dua
- * langkah.
+ * Beda dari import: biasanya akun auth-nya sudah ada, jadi cukup satu
+ * panggilan `admin.auth.admin.updateUserById(..., { password })`. Baris
+ * siswa yang dimasukkan lewat SQL dan belum punya akun auth (`auth_id`
+ * kosong, lihat 0023) dibuatkan akunnya di sini dengan username barisnya.
  *
  * Password baru ditampilkan SEKALI ke guru di client (lihat
  * `AkunAksiButtons.tsx`, Sesi 13 — menggantikan `ResetPasswordButton.tsx`
@@ -351,17 +350,41 @@ export async function resetPasswordSiswa(
     return { success: false, error: "Akun siswa tidak ditemukan." };
   }
 
-  const password = generatePassword();
-  const { error: updateError } = await admin.auth.admin.updateUserById(
-    siswaRow.auth_id,
-    { password }
-  );
+  const password = buatPasswordSiswa();
 
-  if (updateError) {
-    return {
-      success: false,
-      error: `Gagal reset password: ${updateError.message}.`,
-    };
+  if (siswaRow.auth_id) {
+    const { error: updateError } = await admin.auth.admin.updateUserById(
+      siswaRow.auth_id,
+      { password, app_metadata: PENANDA_AKUN_SISWA }
+    );
+
+    if (updateError) {
+      return {
+        success: false,
+        error: `Gagal reset password: ${updateError.message}.`,
+      };
+    }
+  } else {
+    const akun = await buatAkunAuthSiswa(
+      admin,
+      siswaRow.nama,
+      normalkanUsername(siswaRow.username),
+      new Set(),
+      password
+    );
+    if (!akun.ok) return { success: false, error: akun.pesan };
+
+    const { error: tautError } = await admin
+      .from("siswa")
+      .update({ auth_id: akun.userId })
+      .eq("id", siswaRow.id);
+    if (tautError) {
+      await admin.auth.admin.deleteUser(akun.userId);
+      return {
+        success: false,
+        error: `Gagal menautkan akun baru ke data siswa: ${tautError.message}.`,
+      };
+    }
   }
 
   const { error: logError } = await sessionSupabase.rpc(
@@ -391,19 +414,14 @@ export type TambahSiswaManualResult =
   | { success: false; error: string };
 
 /**
- * Tambah SATU siswa lewat form manual — poin 2 sisi admin. Password
- * diturunkan dari tanggal lahir (format DDMMYYYY, konsisten dengan
- * `LoginForm.tsx` dan akun siswa lama — lihat `src/lib/akun.ts` untuk
- * penjelasan kenapa format INI yang dipakai, bukan varian lain yang
- * pernah ada di kode lama), bukan diketik admin — supaya siswa dan
- * admin tidak perlu bertukar password lewat kertas terpisah; siswa
- * cukup diberi tahu username-nya, sisanya sudah dia hafal.
+ * Tambah SATU siswa lewat form manual — poin 2 sisi admin. Username boleh
+ * dikosongkan (dibuat dari nama), password selalu acak 3 huruf + 3 angka
+ * dan ditampilkan sekali ke admin untuk ditulis di kartu login siswa.
  */
 export async function tambahSiswaManual(
   nama: string,
   username: string,
-  kelasId: string,
-  tanggalLahirISO: string
+  kelasId: string
 ): Promise<TambahSiswaManualResult> {
   const sessionSupabase = await createClient();
   const {
@@ -423,19 +441,12 @@ export async function tambahSiswaManual(
   }
 
   const namaBersih = nama.trim();
-  const usernameBersih = normalkanUsername(username);
-  const password = passwordDariTanggalISO(tanggalLahirISO);
+  const usernameDiminta = normalkanUsername(username);
 
-  if (!namaBersih || !usernameBersih || !kelasId) {
+  if (!namaBersih || !kelasId) {
     return {
       success: false,
-      error: "Nama, username, dan kelas wajib diisi.",
-    };
-  }
-  if (!password) {
-    return {
-      success: false,
-      error: "Tanggal lahir tidak valid.",
+      error: "Nama dan kelas wajib diisi.",
     };
   }
 
@@ -449,39 +460,27 @@ export async function tambahSiswaManual(
     };
   }
 
-  const { data: usernameSudahAda } = await admin
-    .from("siswa")
-    .select("nama")
-    .eq("username", usernameBersih)
-    .maybeSingle();
-  if (usernameSudahAda) {
+  const terpakai = await ambilUsernameTerpakai(admin);
+  if (usernameDiminta && terpakai.has(usernameDiminta)) {
     return {
       success: false,
-      error: `Username ini sudah dipakai siswa lain (${usernameSudahAda.nama}).`,
+      error: "Username ini sudah dipakai siswa lain. Kosongkan supaya dibuat otomatis dari nama.",
     };
   }
 
-  const email = emailSiswaDariUsername(usernameBersih);
-  const { data: created, error: createError } = await admin.auth.admin.createUser(
-    { email, password, email_confirm: true }
-  );
-  if (createError || !created?.user) {
-    return {
-      success: false,
-      error: `Gagal membuat akun auth: ${createError?.message ?? "tidak diketahui"}.`,
-    };
-  }
+  const password = buatPasswordSiswa();
+  const akun = await buatAkunAuthSiswa(admin, namaBersih, usernameDiminta, terpakai, password);
+  if (!akun.ok) return { success: false, error: akun.pesan };
 
   const { error: insertError } = await admin.from("siswa").insert({
-    auth_id: created.user.id,
+    auth_id: akun.userId,
     nama: namaBersih,
     kelas_id: kelasId,
-    username: usernameBersih,
-    tanggal_lahir: tanggalLahirISO,
+    username: akun.username,
   });
 
   if (insertError) {
-    await admin.auth.admin.deleteUser(created.user.id);
+    await admin.auth.admin.deleteUser(akun.userId);
     return {
       success: false,
       error: `Gagal menyimpan data siswa: ${insertError.message}.`,
@@ -491,14 +490,14 @@ export async function tambahSiswaManual(
   const { error: logError } = await sessionSupabase.rpc("catat_log_aktivitas", {
     p_aksi: "tambah_siswa_manual",
     p_entitas: "siswa",
-    p_entitas_id: created.user.id,
-    p_detail: { nama: namaBersih, username: usernameBersih },
+    p_entitas_id: akun.userId,
+    p_detail: { nama: namaBersih, username: akun.username },
   });
   if (logError) console.error("Gagal mencatat log tambah_siswa_manual:", logError);
 
   revalidatePath("/admin/siswa");
   revalidatePath("/admin/log");
-  return { success: true, nama: namaBersih, username: usernameBersih, password };
+  return { success: true, nama: namaBersih, username: akun.username, password };
 }
 
 export type DampakHapusSiswa = {
@@ -619,9 +618,11 @@ export async function deleteSiswa(siswaId: string): Promise<HapusAkunResult> {
     return { success: false, error: "Akun siswa tidak ditemukan." };
   }
 
-  const { error: deleteError } = await admin.auth.admin.deleteUser(
-    siswaRow.auth_id
-  );
+  // Baris dari SQL yang belum punya akun auth (0023): tidak ada akun untuk
+  // dihapus, jadi barisnya sendiri yang dihapus (cascade tetap berlaku).
+  const { error: deleteError } = siswaRow.auth_id
+    ? await admin.auth.admin.deleteUser(siswaRow.auth_id)
+    : await admin.from("siswa").delete().eq("id", siswaRow.id);
   if (deleteError) {
     return {
       success: false,

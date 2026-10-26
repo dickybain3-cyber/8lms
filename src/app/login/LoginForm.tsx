@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { emailGuruDariUsername } from "@/lib/akun";
+import { emailGuruDariUsername, emailSiswaDariUsername } from "@/lib/akun";
 import {
   JENJANG_LABEL,
   clearJenjangCookie,
@@ -20,101 +20,18 @@ import {
 
 type Tab = "admin" | "siswa";
 
-const SISWA_EMAIL_SUFFIX =
-  process.env.NEXT_PUBLIC_SISWA_EMAIL_SUFFIX ?? "@siswa.lms-cbt.local";
-
 /**
- * ALUR LOGIN SISWA (sementara, untuk uji coba — supaya tidak perlu
- * mencetak kertas username+password per siswa):
+ * ALUR LOGIN SISWA: username + password dari kartu yang dibagikan guru.
  *
- *   1. Kelas Utama (7 / 8 / 9)  -> menentukan PROJECT SUPABASE mana yang
- *      dihubungi. Ini langkah wajib pertama karena tiap jenjang punya
- *      databasenya sendiri (Sesi 16); tanpa ini kita bahkan tidak tahu
- *      harus menanyakan daftar nama ke server yang mana.
- *   2. Kelas (7.1-7.6 / 8.1-8.6 / 9.1-9.6) -> menyaring daftar nama.
- *   3. Pilih Nama lewat modal (bukan mengetik username).
- *   4. Tanggal hari ini sebagai pengganti kata sandi.
+ * Username dibentuk dari nama (mis. "rizki", "rizkip", "rizki2") dan
+ * password acak 3 huruf + 3 angka (mis. "kmr482") — aturannya di
+ * `src/lib/akun.ts`, akunnya dibuat lewat panel admin atau SQL
+ * `siapkan_akun_siswa()` (migrasi 0023).
  *
- * Beda dari versi sebelumnya: dulu jenjang 8 dan 9 TIDAK dipecah per
- * sub-kelas (satu pilihan "Kelas 8" saja, daftar namanya digabung satu
- * jenjang). Sekarang ketiga jenjang diperlakukan sama — dua dropdown
- * bertingkat — jadi daftar nama yang harus di-scroll siswa selalu
- * sepanjang satu kelas saja, bukan ±200 nama satu jenjang.
- *
- * Tanggal dipakai LANGSUNG sebagai password akun Supabase Auth dengan
- * format digit "DDMMYYYY" (24 September 2026 -> "24092026"). Petunjuk
- * di form dan pesan error otomatis mengikuti tanggal hari ini (WIB).
- * CATATAN: password akun di Supabase Auth harus ikut diganti ke tanggal
- * hari ini (job harian / edge function), kalau tidak login akan gagal.
- *
- * Kalau nanti mau balik ke username+password biasa untuk siswa: ganti
- * isi blok `tab === "siswa"` di bawah dengan input identifier+password
- * polos (mirip blok "admin"), tambahkan SISWA_EMAIL_SUFFIX ke email yang
- * dikirim. RPC `get_siswa_untuk_pilih_nama` di database boleh dibiarkan
- * menganggur, tidak perlu dihapus.
+ * Menggantikan alur lama "pilih kelas -> pilih nama -> ketik tanggal":
+ * daftar nama sekelas terbuka untuk siapa saja yang membuka halaman ini,
+ * dan tanggal lahir mudah ditebak teman sendiri.
  */
-
-/** Sub-kelas per jenjang. Harus sama dengan isi tabel `kelas` tiap project. */
-const KELAS_PER_JENJANG: Record<Jenjang, string[]> = {
-  7: ["7.1", "7.2", "7.3", "7.4", "7.5", "7.6"],
-  8: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"],
-  9: ["9.1", "9.2", "9.3", "9.4", "9.5", "9.6"],
-};
-
-type SiswaPilihan = { id: string; nama: string; username: string };
-
-/**
- * Tanggal & tahun diketik manual (bukan `<input type="date">`) karena
- * date picker bawaan browser sering bikin siswa bingung navigasinya
- * (klik-klik kalender, ganti tahun harus klik mundur puluhan kali).
- * Bulan tetap dropdown supaya tidak ada ambiguitas "05" itu Mei atau
- * Agustus. Value dropdown sudah dua digit ("01".."12") persis format
- * yang dibutuhkan `DDMMYYYY`, jadi tidak perlu konversi lagi di sini.
- */
-const BULAN_LIST: { value: string; label: string }[] = [
-  { value: "01", label: "Januari" },
-  { value: "02", label: "Februari" },
-  { value: "03", label: "Maret" },
-  { value: "04", label: "April" },
-  { value: "05", label: "Mei" },
-  { value: "06", label: "Juni" },
-  { value: "07", label: "Juli" },
-  { value: "08", label: "Agustus" },
-  { value: "09", label: "September" },
-  { value: "10", label: "Oktober" },
-  { value: "11", label: "November" },
-  { value: "12", label: "Desember" },
-];
-
-/** Tanggal ("5" atau "05") + bulan ("05") + tahun ("2012") -> "DDMMYYYY". */
-function tanggalLahirKePassword(
-  tanggal: string,
-  bulan: string,
-  tahun: string
-): string {
-  return `${tanggal.padStart(2, "0")}${bulan}${tahun}`;
-}
-
-/**
- * Tanggal hari ini menurut WIB (bukan jam perangkat/UTC), dalam format
- * Indonesia, mis. "24 September 2026". Dihitung setiap dipanggil, jadi
- * selalu mengikuti hari ini tanpa perlu diedit manual.
- */
-function tanggalHariIniLabel(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-
-  const ambil = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  const tanggal = Number(ambil("day"));
-  const bulan = BULAN_LIST[Number(ambil("month")) - 1]?.label ?? "";
-  const tahun = ambil("year");
-
-  return `${tanggal} ${bulan} ${tahun}`;
-}
 
 /**
  * Jenjang TIDAK lagi dipilih di form: ditentukan oleh alamat halaman
@@ -151,21 +68,10 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
   // bukan cuma email lagi.
   const [adminIdentifier, setAdminIdentifier] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
-  const [lihatPassword, setLihatPassword] = useState(false);
 
   // --- Tab Siswa ---
-  const [kelasNama, setKelasNama] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [daftarSiswa, setDaftarSiswa] = useState<SiswaPilihan[] | null>(null);
-  const [loadingDaftar, setLoadingDaftar] = useState(false);
-  const [errorDaftar, setErrorDaftar] = useState<string | null>(null);
-  const [cariNama, setCariNama] = useState("");
-  const [siswaTerpilih, setSiswaTerpilih] = useState<SiswaPilihan | null>(null);
-  const [tglTanggal, setTglTanggal] = useState("");
-  const [tglBulan, setTglBulan] = useState("");
-  const [tglTahun, setTglTahun] = useState("");
-
-  const daftarKelas = KELAS_PER_JENJANG[jenjang];
+  const [siswaUsername, setSiswaUsername] = useState("");
+  const [siswaPassword, setSiswaPassword] = useState("");
 
   /**
    * Dipanggil tepat sebelum signInWithPassword. Kalau browser ini masih
@@ -185,52 +91,6 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
     }
     setJenjangCookie(jenjang);
   }
-
-  function handleKelasChange(value: string) {
-    setKelasNama(value);
-    setDaftarSiswa(null);
-    setSiswaTerpilih(null);
-    setTglTanggal("");
-    setTglBulan("");
-    setTglTahun("");
-    setError(null);
-  }
-
-  async function bukaModalPilihNama() {
-    if (!kelasNama) return;
-    setModalOpen(true);
-    setCariNama("");
-    setLoadingDaftar(true);
-    setErrorDaftar(null);
-    try {
-      // Klien jenjang halaman ini secara eksplisit; cookie belum diubah
-      // (baru diubah saat benar-benar masuk, lihat siapkanJenjang).
-      const supabase = createClient(jenjang);
-      const { data, error: rpcError } = await supabase.rpc(
-        "get_siswa_untuk_pilih_nama",
-        { p_kelas_nama: kelasNama }
-      );
-      if (rpcError) throw rpcError;
-      setDaftarSiswa((data as SiswaPilihan[]) ?? []);
-    } catch {
-      setErrorDaftar(
-        "Gagal memuat daftar nama. Coba tutup lalu buka lagi, atau hubungi guru/admin."
-      );
-      setDaftarSiswa(null);
-    } finally {
-      setLoadingDaftar(false);
-    }
-  }
-
-  function pilihSiswa(s: SiswaPilihan) {
-    setSiswaTerpilih(s);
-    setModalOpen(false);
-    setError(null);
-  }
-
-  const daftarTersaring = (daftarSiswa ?? []).filter((s) =>
-    s.nama.toLowerCase().includes(cariNama.trim().toLowerCase())
-  );
 
   /**
    * Dipanggil setelah signInWithPassword berhasil, untuk KEDUA tab.
@@ -310,18 +170,10 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
       } catch {
         namaKelasDb = undefined;
       }
-      const kelasSiswa =
-        namaKelasDb ??
-        // Cadangan: kelas yang dipilih sendiri di form. Dipakai kalau
-        // join ke tabel `kelas` terhalang RLS — sapaan tidak boleh
-        // gagal tampil cuma karena kelasnya tidak terbaca.
-        kelasNama ??
-        null;
-
       setSapaan({
-        nama: siswaRow.nama ?? siswaTerpilih?.nama ?? "Siswa",
+        nama: siswaRow.nama ?? "Siswa",
         peran: "Siswa",
-        kelas: kelasSiswa,
+        kelas: namaKelasDb ?? null,
       });
       setTujuan("/siswa");
       return;
@@ -402,50 +254,30 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
     e.preventDefault();
     setError(null);
 
-    if (!kelasNama) {
-      setError("Pilih kelasmu dulu.");
-      return;
-    }
-    if (!siswaTerpilih) {
-      setError('Pilih nama kamu dulu lewat tombol "Pilih Nama".');
-      return;
-    }
-    if (!tglTanggal || !tglBulan || !tglTahun) {
-      setError(
-        `Masukkan tanggal hari ini (${tanggalHariIniLabel()}) dengan lengkap: tanggal, bulan, dan tahun.`
-      );
-      return;
-    }
-    const tanggalAngka = Number(tglTanggal);
-    if (!Number.isInteger(tanggalAngka) || tanggalAngka < 1 || tanggalAngka > 31) {
-      setError(
-        `Tanggal tidak valid — isi angka 1 sampai 31. Masukkan tanggal hari ini (${tanggalHariIniLabel()}).`
-      );
-      return;
-    }
-    if (!/^\d{4}$/.test(tglTahun)) {
-      setError(
-        `Tahun harus 4 digit. Masukkan tanggal hari ini (${tanggalHariIniLabel()}).`
-      );
+    // Spasi yang ikut tersalin dari chat WhatsApp sering menempel di ujung
+    // password; password siswa tidak pernah berisi spasi (lihat akun.ts).
+    const password = siswaPassword.trim();
+    if (!siswaUsername.trim() || !password) {
+      setError("Isi username dan password dari kartu login kamu.");
       return;
     }
 
     setLoading(true);
-    setTahap("Memeriksa tanggal…");
+    setTahap("Menghubungi server kelas " + jenjang + "…");
     await siapkanJenjang();
     const supabase = createClient(jenjang);
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: `${siswaTerpilih.username}${SISWA_EMAIL_SUFFIX}`,
-      password: tanggalLahirKePassword(tglTanggal, tglBulan, tglTahun),
+      email: emailSiswaDariUsername(siswaUsername),
+      password,
     });
 
     if (signInError) {
       setLoading(false);
       setTahap("");
       setError(
-        `Tanggal yang kamu masukkan tidak sesuai. Masukkan tanggal hari ini (${tanggalHariIniLabel()}). ` +
-          "Kalau sudah benar, periksa kelas dan nama yang dipilih, atau hubungi guru/admin."
+        `Username atau password salah — atau akun ini bukan akun ${JENJANG_LABEL[jenjang]}. ` +
+          "Periksa lagi kartu login kamu, atau hubungi guru/admin."
       );
       return;
     }
@@ -509,101 +341,42 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
       {tab === "siswa" ? (
         <form onSubmit={handleSubmitSiswa} className="space-y-4">
           <div>
-            <label htmlFor="kelasSiswa" className="label-field">
-              Kelas
+            <label htmlFor="siswaUsername" className="label-field">
+              Username
             </label>
-            <select
-              id="kelasSiswa"
+            <input
+              id="siswaUsername"
+              type="text"
               required
-              value={kelasNama}
-              onChange={(e) => handleKelasChange(e.target.value)}
-              className="field cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-            >
-              <option value="">
-                Pilih kelas…
-              </option>
-              {daftarKelas.map((k) => (
-                <option key={k} value={k}>
-                  Kelas {k}
-                </option>
-              ))}
-            </select>
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={siswaUsername}
+              onChange={(e) => setSiswaUsername(e.target.value)}
+              className="field"
+              placeholder="mis. rizki"
+            />
           </div>
 
           <div>
-            <span className="label-field">Nama</span>
-            <button
-              type="button"
-              disabled={!kelasNama}
-              onClick={bukaModalPilihNama}
-              className="field flex items-center justify-between text-left disabled:cursor-not-allowed disabled:bg-slate-50"
-            >
-              {siswaTerpilih ? (
-                <span className="font-semibold text-ink">
-                  {siswaTerpilih.nama}
-                </span>
-              ) : (
-                <span className="text-slate-400">
-                  {kelasNama ? "Pilih Nama…" : "Pilih kelas dulu…"}
-                </span>
-              )}
-              <i className="fas fa-chevron-down text-xs text-slate-400" aria-hidden />
-            </button>
+            <label htmlFor="siswaPassword" className="label-field">
+              Password
+            </label>
+            <InputPassword
+              id="siswaPassword"
+              value={siswaPassword}
+              onChange={setSiswaPassword}
+              placeholder="mis. kmr482"
+            />
+            <p className="mt-1.5 text-[0.72rem] text-slate-500">
+              Username dan password ada di kartu login dari guru.
+            </p>
           </div>
-
-          {siswaTerpilih && (
-            <div className="animasi-muncul">
-              <span className="label-field">Tanggal hari ini</span>
-              <div className="grid grid-cols-[0.8fr_1.3fr_1fr] gap-2">
-                <input
-                  id="tglTanggal"
-                  type="number"
-                  inputMode="numeric"
-                  required
-                  min={1}
-                  max={31}
-                  placeholder="Tgl"
-                  aria-label="Tanggal hari ini"
-                  value={tglTanggal}
-                  onChange={(e) => setTglTanggal(e.target.value)}
-                  className="field text-center"
-                />
-                <select
-                  id="tglBulan"
-                  required
-                  aria-label="Bulan hari ini"
-                  value={tglBulan}
-                  onChange={(e) => setTglBulan(e.target.value)}
-                  className="field cursor-pointer"
-                >
-                  <option value="">Bulan</option>
-                  {BULAN_LIST.map((b) => (
-                    <option key={b.value} value={b.value}>
-                      {b.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  id="tglTahun"
-                  type="number"
-                  inputMode="numeric"
-                  required
-                  placeholder="Tahun"
-                  aria-label="Tahun hari ini"
-                  value={tglTahun}
-                  onChange={(e) => setTglTahun(e.target.value)}
-                  className="field text-center"
-                />
-              </div>
-              <p className="mt-1.5 text-[0.72rem] text-slate-500">
-                Masukkan tanggal hari ini ({tanggalHariIniLabel()})
-              </p>
-            </div>
-          )}
 
           {error && <PesanError>{error}</PesanError>}
 
-          <TombolMasuk loading={loading} disabled={!siswaTerpilih} />
+          <TombolMasuk loading={loading} disabled={false} />
         </form>
       ) : (
         <form onSubmit={handleSubmitAdmin} className="space-y-4">
@@ -631,31 +404,12 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
             <label htmlFor="adminPassword" className="label-field">
               Kata sandi
             </label>
-            <div className="relative">
-              <input
-                id="adminPassword"
-                type={lihatPassword ? "text" : "password"}
-                required
-                autoComplete="current-password"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
-                className="field pr-12"
-                placeholder="••••••••"
-              />
-              <button
-                type="button"
-                onClick={() => setLihatPassword((v) => !v)}
-                aria-label={
-                  lihatPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"
-                }
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition-colors hover:text-[--primary]"
-              >
-                <i
-                  className={`fas ${lihatPassword ? "fa-eye-slash" : "fa-eye"}`}
-                  aria-hidden
-                />
-              </button>
-            </div>
+            <InputPassword
+              id="adminPassword"
+              value={adminPassword}
+              onChange={setAdminPassword}
+              placeholder="••••••••"
+            />
           </div>
 
           {error && <PesanError>{error}</PesanError>}
@@ -663,81 +417,46 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
           <TombolMasuk loading={loading} disabled={false} />
         </form>
       )}
+    </div>
+  );
+}
 
-      {modalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 backdrop-blur-[2px]"
-          onClick={() => setModalOpen(false)}
-        >
-          <div
-            className="flex max-h-[80vh] w-full max-w-sm animasi-muncul flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="border-b border-slate-200 p-4">
-              <p className="mb-2 font-serif text-sm font-semibold text-ink">
-                Pilih nama kamu{kelasNama ? ` — Kelas ${kelasNama}` : ""}
-              </p>
-              <div className="relative">
-                <i
-                  className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400"
-                  aria-hidden
-                />
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="Cari nama…"
-                  value={cariNama}
-                  onChange={(e) => setCariNama(e.target.value)}
-                  className="field py-2.5 pl-9 text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="scroll-halus flex-1 overflow-y-auto">
-              {loadingDaftar && (
-                <p className="p-5 text-center text-sm text-slate-500">
-                  <i className="fas fa-circle-notch fa-spin mr-2" aria-hidden />
-                  Memuat daftar nama…
-                </p>
-              )}
-              {errorDaftar && (
-                <p className="p-4 text-sm text-danger">{errorDaftar}</p>
-              )}
-              {!loadingDaftar && !errorDaftar && daftarTersaring.length === 0 && (
-                <p className="p-5 text-center text-sm text-slate-500">
-                  Nama tidak ditemukan.
-                </p>
-              )}
-              {!loadingDaftar &&
-                !errorDaftar &&
-                daftarTersaring.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => pilihSiswa(s)}
-                    className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-left text-sm text-ink transition-colors last:border-0 hover:bg-navy-50"
-                  >
-                    <i
-                      className="fas fa-user-graduate text-xs text-slate-400"
-                      aria-hidden
-                    />
-                    {s.nama}
-                  </button>
-                ))}
-            </div>
-
-            <div className="border-t border-slate-200 p-3 text-right">
-              <button
-                type="button"
-                onClick={() => setModalOpen(false)}
-                className="px-2 text-sm font-semibold text-slate-500 hover:text-ink"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+/** Kolom password dengan tombol lihat/sembunyikan — dipakai kedua tab. */
+function InputPassword({
+  id,
+  value,
+  onChange,
+  placeholder,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  const [lihat, setLihat] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        type={lihat ? "text" : "password"}
+        required
+        autoComplete="current-password"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="field pr-12"
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        onClick={() => setLihat((v) => !v)}
+        aria-label={lihat ? "Sembunyikan kata sandi" : "Lihat kata sandi"}
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition-colors hover:text-[--primary]"
+      >
+        <i className={`fas ${lihat ? "fa-eye-slash" : "fa-eye"}`} aria-hidden />
+      </button>
     </div>
   );
 }

@@ -127,8 +127,8 @@ export async function bacaExcelGuru(
 
 /**
  * Baca file Excel berisi data SISWA. Kolom yang dicari: No (opsional),
- * Nama, Username, Kelas, Tanggal Lahir (format bebas — dinormalkan ke
- * ISO oleh pemanggil lewat `normalkanTanggalExcel`).
+ * Nama, Kelas, Username (opsional — kosong berarti dibuat dari nama oleh
+ * `importSiswaBatch`).
  */
 export async function bacaExcelSiswa(
   file: File
@@ -139,7 +139,6 @@ export async function bacaExcelSiswa(
     nama: string;
     username: string;
     kelas: string;
-    tanggalLahir: string;
   }>
 > {
   try {
@@ -165,17 +164,11 @@ export async function bacaExcelSiswa(
     const idxNama = cariKolom(headerRow, ["nama", "namasiswa", "namalengkap"]);
     const idxUsername = cariKolom(headerRow, ["username", "usernam"]);
     const idxKelas = cariKolom(headerRow, ["kelas"]);
-    const idxTanggal = cariKolom(headerRow, [
-      "tanggallahir",
-      "tgllahir",
-      "tanggallahirsiswa",
-    ]);
 
-    if (idxNama === -1 || idxUsername === -1 || idxKelas === -1) {
+    if (idxNama === -1 || idxKelas === -1) {
       return {
         rows: [],
-        error:
-          "Kolom 'Nama', 'Username', dan/atau 'Kelas' tidak ditemukan di header.",
+        error: "Kolom 'Nama' dan/atau 'Kelas' tidak ditemukan di header.",
       };
     }
 
@@ -185,25 +178,16 @@ export async function bacaExcelSiswa(
       nama: string;
       username: string;
       kelas: string;
-      tanggalLahir: string;
     }[] = [];
     let nomorBaris = 0;
 
     ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
       if (rowNumber <= headerRowNum) return;
-      const values = (row.values as unknown[]).slice(1);
-      const stringValues = values.map(selKeString);
+      const stringValues = (row.values as unknown[]).slice(1).map(selKeString);
       const nama = stringValues[idxNama] ?? "";
-      const username = stringValues[idxUsername] ?? "";
+      const username = idxUsername !== -1 ? stringValues[idxUsername] ?? "" : "";
       if (!nama && !username) return;
       nomorBaris++;
-
-      // Tanggal lahir: sel Excel bisa berupa objek Date ASLI (kalau
-      // kolomnya diformat sebagai tanggal) atau teks "14-05-2012" /
-      // "14/05/2012" — ditangani di `normalkanTanggalExcel`, bukan di
-      // sini, supaya logikanya satu tempat dan dites sendiri.
-      const rawTanggal =
-        idxTanggal !== -1 ? values[idxTanggal] : undefined;
 
       rows.push({
         nomorBaris,
@@ -211,7 +195,6 @@ export async function bacaExcelSiswa(
         nama,
         username,
         kelas: stringValues[idxKelas] ?? "",
-        tanggalLahir: normalkanTanggalExcel(rawTanggal),
       });
     });
 
@@ -246,37 +229,4 @@ function cariBarisHeader(
     if (wajibNormal.every((w) => nilai.includes(w))) return r;
   }
   return -1;
-}
-
-/**
- * Sel tanggal Excel -> "YYYY-MM-DD". Menangani tiga bentuk yang
- * kemungkinan muncul:
- *   - objek `Date` asli (kolom diformat sebagai tanggal di Excel)
- *   - teks "DD-MM-YYYY" atau "DD/MM/YYYY" (paling umum ditulis manual)
- *   - teks yang sudah "YYYY-MM-DD"
- * Mengembalikan string kosong kalau tidak bisa dikenali — pemanggil
- * (`ImportSiswaForm`) yang memutuskan bagaimana menampilkan baris
- * dengan tanggal kosong ini ke admin.
- */
-export function normalkanTanggalExcel(nilai: unknown): string {
-  if (nilai instanceof Date && !isNaN(nilai.getTime())) {
-    const y = nilai.getFullYear();
-    const m = String(nilai.getMonth() + 1).padStart(2, "0");
-    const d = String(nilai.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-
-  const s = selKeString(nilai);
-  if (!s) return "";
-
-  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
-
-  const dmyMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  if (dmyMatch) {
-    const [, d, m, y] = dmyMatch;
-    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-  }
-
-  return "";
 }
