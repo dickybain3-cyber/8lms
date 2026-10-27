@@ -14,6 +14,7 @@ const BATAS_BARIS = 200;
 
 function formatTanggal(iso: string) {
   return new Date(iso).toLocaleDateString("id-ID", {
+    timeZone: "Asia/Jakarta",
     day: "numeric",
     month: "short",
     year: "numeric",

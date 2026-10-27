@@ -25,7 +25,7 @@ type Urut = "nilai" | "kelas" | "nama";
 type Cari = { jenjang?: string; event?: string; kelas?: string; mapel?: string; urut?: string };
 
 function tanggal(iso: string) {
-  return new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  return new Date(iso).toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "long", year: "numeric" });
 }
 
 /**

@@ -414,8 +414,12 @@ function BerkasTersimpan({
           startTransition(async () => {
             setGalat(null);
             const hasil = await urlBerkasSaya(path);
-            if (hasil.url) window.open(hasil.url, "_blank", "noopener,noreferrer");
-            else setGalat(hasil.error);
+            if (!hasil.url) return setGalat(hasil.error);
+            // Browser ujian (WebView) dan pemblokir pop-up sering menolak tab
+            // baru, apalagi setelah `await`: buka di tab yang sama sebagai cadangan.
+            const tab = window.open(hasil.url, "_blank");
+            if (tab) tab.opener = null;
+            else window.location.assign(hasil.url);
           })
         }
         className="text-xs font-semibold text-teal underline underline-offset-4 disabled:opacity-50"

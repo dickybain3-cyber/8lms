@@ -139,7 +139,7 @@ export default async function StatistikPage() {
                           <h2 className="font-serif text-[1.1rem] font-bold leading-snug text-ink">{k.nama}</h2>
                           <p className="text-[0.78rem] text-slate-500">
                             {k.mapel.length} mapel · mulai{" "}
-                            {new Date(k.mulai).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                            {new Date(k.mulai).toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "long", year: "numeric" })}
                           </p>
                         </div>
                         <Link

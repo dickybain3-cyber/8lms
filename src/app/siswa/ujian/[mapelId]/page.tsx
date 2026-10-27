@@ -72,6 +72,7 @@ export default async function UjianPage(
         pesan={`Ujian "${mapel.nama}" belum dibuka. Silakan kembali pada ${new Date(
           mapel.waktu_mulai
         ).toLocaleString("id-ID", {
+          timeZone: "Asia/Jakarta",
           day: "numeric",
           month: "long",
           hour: "2-digit",

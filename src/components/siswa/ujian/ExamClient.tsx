@@ -517,13 +517,23 @@ export default function ExamClient({
     let sedangAway = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
+    // Browser ujian berbasis WebView (Exambro/Examora dsb.) sering memicu
+    // `blur` TANPA `focus` balasan: notifikasi atau overlay aplikasi ujian,
+    // pemilih bawaan Android, fokus pindah ke iframe. Tanpa pemeriksaan ini
+    // timer jalan terus walau siswa masih mengerjakan, lalu dikunci.
+    function masihDiHalaman() {
+      if (document.visibilityState !== "visible") return false;
+      if (document.hasFocus()) return true;
+      return document.activeElement?.tagName === "IFRAME";
+    }
+
     function mulaiAway() {
       if (sedangAway) return; // sudah dihitung, blur+hidden tidak dobel
       sedangAway = true;
       timer = setTimeout(() => {
-        catatPelanggaran();
         sedangAway = false;
         timer = null;
+        if (!masihDiHalaman()) catatPelanggaran();
       }, AMBANG_MENINGGALKAN_MS);
     }
 
@@ -543,14 +553,20 @@ export default function ExamClient({
       else selesaiAway();
     }
 
+    // Siswa menyentuh/mengetik di halaman = jelas tidak pergi, walaupun
+    // `focus` tidak pernah datang (lihat `masihDiHalaman`).
+    const AKTIVITAS = ["pointerdown", "touchstart", "keydown"] as const;
+
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", mulaiAway);
     window.addEventListener("focus", selesaiAway);
+    AKTIVITAS.forEach((e) => document.addEventListener(e, selesaiAway, { passive: true }));
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("blur", mulaiAway);
       window.removeEventListener("focus", selesaiAway);
+      AKTIVITAS.forEach((e) => document.removeEventListener(e, selesaiAway));
       if (timer) clearTimeout(timer);
     };
   }, [readOnly, terkunci, catatPelanggaran]);

@@ -31,6 +31,7 @@ import {
 
 function formatWaktu(iso: string) {
   return new Date(iso).toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
     day: "numeric",
     month: "short",
     hour: "2-digit",

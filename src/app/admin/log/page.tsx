@@ -16,6 +16,7 @@ const BATAS_BARIS = 100;
 
 function formatWaktu(iso: string) {
   return new Date(iso).toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
     day: "numeric",
     month: "short",
     year: "numeric",
