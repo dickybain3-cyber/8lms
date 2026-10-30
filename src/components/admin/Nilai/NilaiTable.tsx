@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import {
   hitungUlangNilaiMapel,
   resetUjianSiswa,
+  resetUjianTerpilih,
   hitungUlangNilaiMapelAdmin,
   // overrideNilai / overrideNilaiAdmin SENGAJA tidak diimpor lagi — nilai
   // di Rekap Penilaian sekarang fixed/read-only, tidak boleh diubah
@@ -12,6 +13,8 @@ import {
   // "Ubah" di sini bukan satu-satunya penjaga — ini lapisan UI-nya saja.
 } from "@/app/admin/nilai/actions";
 import BadgeJenjang from "@/components/admin/BadgeJenjang";
+import BilahResetMassal from "@/components/admin/BilahResetMassal";
+import { catatanCheckout, type StatusCheckout } from "@/lib/checkout";
 import type { Jenjang } from "@/lib/jenjang";
 import { unduhExcelRekapNilai, type KelasRekapNilai } from "@/lib/excel";
 import { muatAnalisisButir } from "@/app/admin/statistik/actions";
@@ -30,9 +33,16 @@ export interface BarisNilai {
   username: string;
   kelasNama: string;
   submitted: boolean;
+  sudahMulai: boolean;
   totalSkor: number | null;
   isOverride: boolean;
   detailJsonb: Record<string, number>;
+  checkoutStatus: StatusCheckout | null;
+  checkoutMasihDiRuang: boolean | null;
+}
+
+function catatanBaris(row: BarisNilai): string {
+  return catatanCheckout(row.checkoutStatus, row.checkoutMasihDiRuang);
 }
 
 function fmtSkor(n: number | null) {
@@ -83,6 +93,7 @@ function unduhCsv(
     ...soalList.map((s) => `Soal ${s.urutan}`),
     "Total Skor",
     "Override Manual",
+    "Catatan",
   ];
 
   const escape = (v: string | number) => {
@@ -105,6 +116,7 @@ function unduhCsv(
         ...kolomSoal,
         fmtSkor(row.totalSkor),
         row.isOverride ? "Ya" : "Tidak",
+        catatanBaris(row),
       ]
         .map(escape)
         .join(",")
@@ -121,16 +133,26 @@ function unduhCsv(
   URL.revokeObjectURL(url);
 }
 
+function bisaDireset(row: BarisNilai): boolean {
+  return row.submitted || row.sudahMulai;
+}
+
 function BarisSiswa({
   row,
   mapelId,
   jenjang,
   soalList,
+  isAdmin,
+  ditandai,
+  onTandai,
 }: {
   row: BarisNilai;
   mapelId: string;
   jenjang: Jenjang;
   soalList: SoalRingkas[];
+  isAdmin: boolean;
+  ditandai: boolean;
+  onTandai: (id: string) => void;
 }) {
   const [showDetail, setShowDetail] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -157,6 +179,19 @@ function BarisSiswa({
   return (
     <>
       <tr className="border-b border-ink/5 last:border-0">
+        {isAdmin && (
+          <td className="py-2.5 pl-3">
+            {bisaDireset(row) && (
+              <input
+                type="checkbox"
+                checked={ditandai}
+                onChange={() => onTandai(row.siswaId)}
+                aria-label={`Tandai ${row.nama}`}
+                className="h-4 w-4 accent-danger"
+              />
+            )}
+          </td>
+        )}
         <td className="py-2.5 pl-3 pr-3">
           <p className="text-sm text-ink">{row.nama}</p>
           <p className="text-xs text-ink/40">
@@ -187,6 +222,9 @@ function BarisSiswa({
           </div>
           {errorMsg && <p className="mt-1 text-xs text-danger">{errorMsg}</p>}
         </td>
+        <td className="py-2.5 pr-3 text-xs font-medium text-danger">
+          {catatanBaris(row) || <span className="text-ink/30">—</span>}
+        </td>
         <td className="py-2.5 pr-3 text-right">
           {row.submitted && (
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -198,7 +236,7 @@ function BarisSiswa({
                 {showDetail ? "Sembunyikan" : "Detail"}
               </button>
 
-              {konfirmReset ? (
+              {!isAdmin ? null : konfirmReset ? (
                 <span className="flex items-center gap-1.5 rounded-lg bg-red-50 px-2 py-1 ring-1 ring-red-200">
                   <span className="text-[0.7rem] font-semibold text-red-700">
                     Hapus jawaban {row.nama}?
@@ -235,7 +273,7 @@ function BarisSiswa({
       </tr>
       {showDetail && (
         <tr className="border-b border-ink/5 bg-paper-dark/30 last:border-0">
-          <td colSpan={4} className="px-3 py-3">
+          <td colSpan={isAdmin ? 6 : 5} className="px-3 py-3">
             <div className="flex flex-wrap gap-2">
               {soalList.map((s) => (
                 <span
@@ -322,6 +360,39 @@ export default function NilaiTable({
     [rows, kelasFilter]
   );
 
+  // Yang direset hanya tanda pada baris yang sedang TAMPIL: siswa kelas lain
+  // yang tersembunyi filter tidak boleh ikut terhapus tanpa terlihat.
+  const [tanda, setTanda] = useState<Set<string>>(() => new Set());
+  const [pendingReset, startReset] = useTransition();
+  const [pesanReset, setPesanReset] = useState<string | null>(null);
+  const bisaDitandai = useMemo(() => rowsTampil.filter(bisaDireset), [rowsTampil]);
+  const idDitandai = bisaDitandai
+    .filter((r) => tanda.has(r.siswaId))
+    .map((r) => r.siswaId);
+  const semuaDitandai =
+    bisaDitandai.length > 0 && idDitandai.length === bisaDitandai.length;
+
+  function tandai(id: string) {
+    setTanda((t) => {
+      const next = new Set(t);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }
+
+  function resetDitandai() {
+    setPesanReset(null);
+    startReset(async () => {
+      const hasil = await resetUjianTerpilih({
+        jenjang,
+        mapelId,
+        siswaIds: idDitandai,
+      });
+      setTanda(new Set());
+      setPesanReset(hasil.error);
+    });
+  }
+
   function hitungUlang() {
     setRecomputeMsg(null);
     startRecompute(async () => {
@@ -360,6 +431,7 @@ export default function NilaiTable({
               isOverride: r.isOverride,
               jumlahBenar: benar,
               jumlahSalah: salah,
+              catatan: catatanBaris(r),
             };
           }),
       }));
@@ -469,13 +541,47 @@ export default function NilaiTable({
         {pesanUnduh && <p className="text-xs text-danger">{pesanUnduh}</p>}
       </div>
 
+      {isAdmin && (
+        <div className="mb-3 space-y-2">
+          <BilahResetMassal
+            jumlah={idDitandai.length}
+            sibuk={pendingReset}
+            onReset={resetDitandai}
+            onBatal={() => setTanda(new Set())}
+          />
+          {pesanReset && <p className="text-xs text-danger">{pesanReset}</p>}
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-lg border border-ink/10 bg-white">
-        <table className="w-full min-w-[560px] text-left">
+        <table className="w-full min-w-[640px] text-left">
           <thead>
             <tr className="border-b border-ink/10 text-xs uppercase tracking-wide text-ink/40">
+              {isAdmin && (
+                <th className="w-8 py-2.5 pl-3">
+                  <input
+                    type="checkbox"
+                    checked={semuaDitandai}
+                    disabled={bisaDitandai.length === 0}
+                    onChange={() =>
+                      setTanda(
+                        new Set(
+                          semuaDitandai
+                            ? []
+                            : bisaDitandai.map((r) => r.siswaId)
+                        )
+                      )
+                    }
+                    aria-label="Tandai semua"
+                    title="Tandai semua"
+                    className="h-4 w-4 accent-danger"
+                  />
+                </th>
+              )}
               <th className="px-3 py-2.5 font-medium">Siswa</th>
               <th className="px-3 py-2.5 font-medium">Status</th>
               <th className="px-3 py-2.5 font-medium">Nilai</th>
+              <th className="px-3 py-2.5 font-medium">Catatan</th>
               <th className="px-3 py-2.5"></th>
             </tr>
           </thead>
@@ -487,6 +593,9 @@ export default function NilaiTable({
                 mapelId={mapelId}
                 jenjang={jenjang}
                 soalList={soalList}
+                isAdmin={isAdmin}
+                ditandai={tanda.has(row.siswaId)}
+                onTandai={tandai}
               />
             ))}
           </tbody>

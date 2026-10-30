@@ -10,10 +10,13 @@ import {
   // komentar di overrideNilaiAdmin() (action) di bawah: jalur override
   // manual dimatikan total, termasuk di level ini.
   hitungUlangNilaiMapelAdmin as hitungUlangNilaiMapelAdminData,
+  resetUjianBanyakSiswa,
   type KonteksAdmin,
 } from "@/lib/supabase/admin-multi";
 
 export type ActionResult = { error: string | null };
+
+const HANYA_ADMIN_RESET = "Reset ujian hanya bisa dilakukan akun admin.";
 
 /**
  * Tombol "Hitung Ulang Nilai" — memanggil RPC yang menjalankan ulang
@@ -103,8 +106,8 @@ export async function overrideNilai(): Promise<ActionResult> {
  *
  * Nilai itu datang dari browser, karena itu TIDAK dipercaya: yang
  * memutuskan boleh atau tidak adalah `pastikanBolehKeJenjang()` di
- * server. Guru biasa hanya lolos untuk jenjang yang sedang dia login-i;
- * cuma `guru.is_admin = true` yang boleh lintas jenjang.
+ * server, ditambah syarat `sesi.isAdmin`: reset khusus admin, guru biasa
+ * hanya memantau.
  *
  * ── KENAPA service_role, PADAHAL GURU PUNYA AKSES KE MAPELNYA? ───────
  * Tabel `jawaban_siswa` sengaja TIDAK punya policy DELETE untuk siapa
@@ -129,6 +132,7 @@ export async function resetUjianSiswa(params: {
   const sesi = await getSesiGuru();
   const tidakBoleh = await pastikanBolehKeJenjang(sesi, jenjang);
   if (tidakBoleh) return { error: tidakBoleh };
+  if (!sesi.isAdmin) return { error: HANYA_ADMIN_RESET };
 
   const admin = await createAdminClient(jenjang);
 
@@ -214,6 +218,42 @@ export async function resetUjianSiswa(params: {
   revalidatePath("/admin/statistik");
   revalidatePath("/admin/log");
   return { error: null };
+}
+
+/** Reset siswa yang ditandai di tabel Rekap Penilaian. Khusus admin. */
+export async function resetUjianTerpilih(params: {
+  jenjang: Jenjang;
+  mapelId: string;
+  siswaIds: string[];
+}): Promise<ActionResult> {
+  const { jenjang, mapelId, siswaIds } = params;
+
+  if (!isJenjangValid(jenjang)) {
+    return { error: "Jenjang tidak valid." };
+  }
+  if (siswaIds.length === 0) {
+    return { error: "Belum ada siswa yang ditandai." };
+  }
+
+  const sesi = await getSesiGuru();
+  const tidakBoleh = await pastikanBolehKeJenjang(sesi, jenjang);
+  if (tidakBoleh) return { error: tidakBoleh };
+  if (!sesi.isAdmin) return { error: HANYA_ADMIN_RESET };
+
+  const { gagal } = await resetUjianBanyakSiswa(jenjang, siswaIds, mapelId, {
+    guruId: sesi.guruId,
+    nama: sesi.nama,
+    email: sesi.email,
+    jenjangSesi: sesi.jenjang,
+  });
+
+  revalidatePath("/admin/nilai");
+  revalidatePath("/admin/statistik");
+  revalidatePath("/admin/log");
+  return {
+    error:
+      gagal > 0 ? `${gagal} siswa gagal direset. Coba lagi untuk siswa itu.` : null,
+  };
 }
 
 // ---------------------------------------------------------------------------

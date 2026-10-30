@@ -13,6 +13,7 @@ import NilaiTable, {
   type SoalRingkas,
 } from "@/components/admin/Nilai/NilaiTable";
 import { tahunAjaranDariTanggal } from "@/lib/tahun-ajaran";
+import { checkoutSatuSiswa, muatCheckoutMapel } from "@/lib/checkout";
 
 function formatWaktu(iso: string) {
   return new Date(iso).toLocaleString("id-ID", {
@@ -246,9 +247,11 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
 
   const { data: jawabanList, error: errJawaban } = await supabase
     .from("jawaban_siswa")
-    .select("siswa_id, submitted_at")
+    .select("siswa_id, submitted_at, mulai_at")
     .eq("mapel_id", mapelId);
   catatGalat("jawaban_siswa", errJawaban);
+
+  const checkout = await muatCheckoutMapel(supabase, mapelId);
 
   const { data: nilaiList, error: errNilai } = await supabase
     .from("nilai")
@@ -259,6 +262,12 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
   const submittedMap = new Map(
     (jawabanList ?? []).map((j) => [j.siswa_id, j.submitted_at !== null])
   );
+  const mulaiSet = new Set(
+    (jawabanList ?? [])
+      .filter((j) => j.mulai_at !== null)
+      .map((j) => j.siswa_id)
+  );
+  const sekarangMs = Date.now();
   const nilaiMap = new Map(
     (nilaiList ?? []).map((n) => [
       n.siswa_id,
@@ -272,15 +281,20 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
 
   const rows: BarisNilai[] = (siswaList ?? []).map((s) => {
     const nilai = nilaiMap.get(s.id);
+    const sudahMulai = mulaiSet.has(s.id);
+    const c = checkoutSatuSiswa(checkout, s.id, sudahMulai, sekarangMs);
     return {
       siswaId: s.id,
       nama: s.nama,
       username: s.username,
       kelasNama: kelasNamaMap.get(s.kelas_id) ?? "-",
       submitted: submittedMap.get(s.id) ?? false,
+      sudahMulai,
       totalSkor: nilai?.totalSkor ?? null,
       isOverride: nilai?.isOverride ?? false,
       detailJsonb: nilai?.detailJsonb ?? {},
+      checkoutStatus: c.status,
+      checkoutMasihDiRuang: c.masihDiRuang,
     };
   });
 

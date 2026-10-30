@@ -4,10 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { JENJANG_LABEL, type Jenjang } from "@/lib/jenjang";
 import { formatSisaWaktu } from "@/lib/ujian";
 import { unduhExcel, waktuExcel } from "@/lib/excel";
+import { LABEL_CHECKOUT, jamWib } from "@/lib/checkout";
+import BilahResetMassal from "@/components/admin/BilahResetMassal";
 import type { BarisMonitoring, MapelMonitoring } from "@/lib/supabase/admin-multi";
 import {
   ambilMonitoring,
   aksiResetSiswa,
+  aksiResetTerpilih,
   aksiPaksaKumpulkan,
   aksiResetMapel,
 } from "./actions";
@@ -23,12 +26,34 @@ interface DataJenjang {
   mapel: MapelMonitoring[];
 }
 
-type FilterStatus = "semua" | "belum_mulai" | "mengerjakan" | "selesai";
+type FilterStatus =
+  | "semua"
+  | "belum_mulai"
+  | "mengerjakan"
+  | "selesai"
+  | "belum_checkout";
+
+function belumCheckout(b: BarisMonitoring): boolean {
+  return b.checkout_status === "terbuka" || b.checkout_status === "terlewat";
+}
+
+function teksCheckout(b: BarisMonitoring): string {
+  if (b.checkout_status === null) return "—";
+  if (b.checkout_status !== "sudah" || !b.checkout_at) {
+    return LABEL_CHECKOUT[b.checkout_status];
+  }
+  const jawaban = b.checkout_masih_di_ruang ? "Ya" : "Tidak";
+  return `${jamWib(b.checkout_at)} · jawab ${jawaban}`;
+}
 
 export default function MonitoringClient({
   hasilPerJenjang,
+  bolehAksi,
 }: {
   hasilPerJenjang: DataJenjang[];
+  /** false = guru biasa: hanya memantau. Tombol disembunyikan di sini, dan
+   *  aksinya tetap ditolak `pastikanAdmin()` di actions.ts. */
+  bolehAksi: boolean;
 }) {
   // Jenjang awal: yang punya ujian sedang berlangsung. Admin membuka halaman
   // ini justru saat ujian jalan, jadi menebak ke sana menghemat satu klik.
@@ -52,8 +77,15 @@ export default function MonitoringClient({
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("semua");
   const [konfirmasiResetMapel, setKonfirmasiResetMapel] = useState(false);
   const [ketikanKonfirmasi, setKetikanKonfirmasi] = useState("");
+  const [tanda, setTanda] = useState<Set<string>>(() => new Set());
+  const [sibukReset, setSibukReset] = useState(false);
 
   const mapelAktif = daftarMapel.find((m) => m.mapel_id === mapelId) ?? null;
+
+  // Tanda milik ujian lama tidak boleh terbawa ke ujian berikutnya.
+  useEffect(() => {
+    setTanda(new Set());
+  }, [jenjang, mapelId]);
 
   // Ganti jenjang -> pilih otomatis ujian yang sedang berlangsung di jenjang
   // itu (kalau ada), supaya perpindahan antar kelas terasa instan, bukan
@@ -124,6 +156,8 @@ export default function MonitoringClient({
       ).length,
       selesai: baris.filter((b) => b.status === "selesai").length,
       online: baris.filter((b) => b.is_online && b.status !== "selesai").length,
+      checkout: baris.filter((b) => b.checkout_status === "sudah").length,
+      belumCheckout: baris.filter(belumCheckout).length,
     };
   }, [baris]);
 
@@ -137,12 +171,38 @@ export default function MonitoringClient({
         b.siswa_username.toLowerCase().includes(q);
       const cocokStatus =
         filterStatus === "semua" ||
-        (filterStatus === "mengerjakan"
-          ? b.status === "mengerjakan" || b.status === "waktu_habis"
-          : b.status === filterStatus);
+        (filterStatus === "belum_checkout"
+          ? belumCheckout(b)
+          : filterStatus === "mengerjakan"
+            ? b.status === "mengerjakan" || b.status === "waktu_habis"
+            : b.status === filterStatus);
       return cocokCari && cocokStatus;
     });
   }, [baris, cari, filterStatus]);
+
+  // Sama seperti di Rekap Penilaian: hanya baris yang sedang tampil yang
+  // ikut direset, siswa yang tersembunyi filter tidak terhapus tanpa terlihat.
+  const bisaDitandai = barisTampil.filter((b) => b.status !== "belum_mulai");
+  const idDitandai = bisaDitandai
+    .filter((b) => tanda.has(b.siswa_id))
+    .map((b) => b.siswa_id);
+  const semuaDitandai =
+    bisaDitandai.length > 0 && idDitandai.length === bisaDitandai.length;
+
+  function tandai(id: string) {
+    setTanda((t) => {
+      const next = new Set(t);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }
+
+  async function resetDitandai() {
+    setSibukReset(true);
+    await jalankanAksi(() => aksiResetTerpilih(jenjang, idDitandai, mapelId));
+    setTanda(new Set());
+    setSibukReset(false);
+  }
 
   async function jalankanAksi(
     fn: () => Promise<{ ok: boolean; pesan: string }>
@@ -177,6 +237,7 @@ export default function MonitoringClient({
             { header: "Mulai", key: "mulai", lebar: 18, tengah: true },
             { header: "Dikumpulkan", key: "submit", lebar: 18, tengah: true },
             { header: "Skor", key: "skor", lebar: 10, tengah: true },
+            { header: "Checkout", key: "checkout", lebar: 22, tengah: true },
           ],
           baris: baris.map((b) => ({
             nama: b.siswa_nama,
@@ -188,6 +249,7 @@ export default function MonitoringClient({
             mulai: waktuExcel(b.mulai_at),
             submit: waktuExcel(b.submitted_at),
             skor: b.total_skor ?? "",
+            checkout: teksCheckout(b),
           })),
           sorotBaris: (r) => r.status === LABEL_STATUS.belum_mulai,
         },
@@ -340,12 +402,14 @@ export default function MonitoringClient({
 
       {/* Kartu ringkasan */}
       {mapelId && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <Kartu label="Peserta" nilai={ringkas.total} warna="text-ink" />
           <Kartu label="Belum mulai" nilai={ringkas.belum} warna="text-ink/50" />
           <Kartu label="Mengerjakan" nilai={ringkas.kerja} warna="text-gold-dark" />
           <Kartu label="Selesai" nilai={ringkas.selesai} warna="text-ok" />
           <Kartu label="Online" nilai={ringkas.online} warna="text-teal" />
+          <Kartu label="Sudah checkout" nilai={ringkas.checkout} warna="text-ok" />
+          <Kartu label="Belum checkout" nilai={ringkas.belumCheckout} warna="text-danger" />
         </div>
       )}
 
@@ -359,13 +423,14 @@ export default function MonitoringClient({
             placeholder="Cari nama / kelas / username…"
             className="min-w-[220px] flex-1 rounded-md border border-ink/15 bg-white px-3.5 py-2 text-sm text-ink outline-none focus:border-gold"
           />
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {(
               [
                 ["semua", "Semua"],
                 ["belum_mulai", "Belum mulai"],
                 ["mengerjakan", "Mengerjakan"],
                 ["selesai", "Selesai"],
+                ["belum_checkout", "Belum checkout"],
               ] as [FilterStatus, string][]
             ).map(([nilai, label]) => (
               <button
@@ -385,12 +450,42 @@ export default function MonitoringClient({
         </div>
       )}
 
+      {bolehAksi && (
+        <BilahResetMassal
+          jumlah={idDitandai.length}
+          sibuk={sibukReset}
+          onReset={() => void resetDitandai()}
+          onBatal={() => setTanda(new Set())}
+        />
+      )}
+
       {/* Tabel */}
       {mapelId && (
         <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1040px] text-sm">
             <thead className="border-b border-ink/10 bg-paper-dark text-xs uppercase tracking-wide text-ink/50">
               <tr>
+                {bolehAksi && (
+                  <th className="w-10 py-3 pl-4">
+                    <input
+                      type="checkbox"
+                      checked={semuaDitandai}
+                      disabled={bisaDitandai.length === 0}
+                      onChange={() =>
+                        setTanda(
+                          new Set(
+                            semuaDitandai
+                              ? []
+                              : bisaDitandai.map((b) => b.siswa_id)
+                          )
+                        )
+                      }
+                      aria-label="Tandai semua"
+                      title="Tandai semua"
+                      className="h-4 w-4 accent-danger"
+                    />
+                  </th>
+                )}
                 <th className="px-4 py-3 text-left">Siswa</th>
                 <th className="px-4 py-3 text-left">Kelas</th>
                 <th className="px-4 py-3 text-left">Status</th>
@@ -398,14 +493,15 @@ export default function MonitoringClient({
                 <th className="px-4 py-3 text-center">Soal</th>
                 <th className="px-4 py-3 text-center">Sisa waktu</th>
                 <th className="px-4 py-3 text-center">Skor</th>
-                <th className="px-4 py-3 text-right">Aksi</th>
+                <th className="px-4 py-3 text-center">Checkout</th>
+                {bolehAksi && <th className="px-4 py-3 text-right">Aksi</th>}
               </tr>
             </thead>
             <tbody>
               {barisTampil.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={bolehAksi ? 10 : 8}
                     className="px-4 py-10 text-center text-sm text-ink/40"
                   >
                     {memuat ? "Memuat data…" : "Tidak ada peserta yang cocok."}
@@ -419,6 +515,9 @@ export default function MonitoringClient({
                     jenjang={jenjang}
                     mapelId={mapelId}
                     onAksi={jalankanAksi}
+                    bolehAksi={bolehAksi}
+                    ditandai={tanda.has(b.siswa_id)}
+                    onTandai={tandai}
                   />
                 ))
               )}
@@ -428,7 +527,7 @@ export default function MonitoringClient({
       )}
 
       {/* Zona berbahaya */}
-      {mapelAktif && (
+      {bolehAksi && mapelAktif && (
         <div className="rounded-xl border border-danger/25 bg-danger/5 p-4">
           <p className="mb-1 text-sm font-semibold text-danger">
             Reset seluruh peserta ujian ini
@@ -520,11 +619,17 @@ function BarisSiswa({
   jenjang,
   mapelId,
   onAksi,
+  bolehAksi,
+  ditandai,
+  onTandai,
 }: {
   b: BarisMonitoring;
   jenjang: Jenjang;
   mapelId: string;
   onAksi: (fn: () => Promise<{ ok: boolean; pesan: string }>) => Promise<void>;
+  bolehAksi: boolean;
+  ditandai: boolean;
+  onTandai: (id: string) => void;
 }) {
   const [sibuk, setSibuk] = useState(false);
 
@@ -547,6 +652,19 @@ function BarisSiswa({
 
   return (
     <tr className="border-b border-ink/5 last:border-0">
+      {bolehAksi && (
+        <td className="py-3 pl-4">
+          {b.status !== "belum_mulai" && (
+            <input
+              type="checkbox"
+              checked={ditandai}
+              onChange={() => onTandai(b.siswa_id)}
+              aria-label={`Tandai ${b.siswa_nama}`}
+              className="h-4 w-4 accent-danger"
+            />
+          )}
+        </td>
+      )}
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           <span
@@ -613,6 +731,18 @@ function BarisSiswa({
           ? "—"
           : `${Number(b.total_skor)} / ${Number(b.skor_maksimal)}`}
       </td>
+      <td
+        className={`px-4 py-3 text-center text-xs font-semibold ${
+          belumCheckout(b) || b.checkout_masih_di_ruang === false
+            ? "text-danger"
+            : b.checkout_status === "sudah"
+              ? "text-ok"
+              : "text-ink/40"
+        }`}
+      >
+        {teksCheckout(b)}
+      </td>
+      {bolehAksi && (
       <td className="px-4 py-3">
         <div className="flex justify-end gap-1.5">
           {b.status !== "selesai" && b.status !== "belum_mulai" && (
@@ -651,6 +781,7 @@ function BarisSiswa({
           )}
         </div>
       </td>
+      )}
     </tr>
   );
 }

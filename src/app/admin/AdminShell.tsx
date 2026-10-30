@@ -68,13 +68,8 @@ const MENU: (MenuTunggal | MenuGrup)[] = [
       // mengetik /admin/monitoring di bilah alamat. Ini halaman yang
       // paling dibutuhkan justru saat ujian sedang berlangsung, jadi
       // ketiadaan tautannya adalah cacat yang paling mahal di seluruh
-      // menu ini.
-      {
-        href: "/admin/monitoring",
-        label: "Pantau Ujian",
-        ikon: "fa-desktop",
-        adminSaja: true,
-      },
+      // menu ini. Guru biasa ikut melihatnya, tapi hanya bisa memantau.
+      { href: "/admin/monitoring", label: "Pantau Ujian", ikon: "fa-desktop" },
       { href: "/admin/nilai", label: "Rekap Penilaian", ikon: "fa-chart-line" },
       { href: "/admin/statistik", label: "Statistik", ikon: "fa-chart-pie" },
     ],
@@ -153,7 +148,7 @@ export default function AdminShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Menu ber-tanda `adminSaja` disaring di sini. Ini murni kerapian UI,
-  // BUKAN lapisan keamanan: halaman /admin/monitoring dan /admin/denah
+  // BUKAN lapisan keamanan: halaman /admin/denah dan /admin/bersih-data
   // masing-masing tetap memeriksa `sesi.isAdmin` sendiri di server, jadi
   // guru yang mengetik alamatnya langsung tetap ditolak di sana.
   const menu: (MenuTunggal | MenuGrup)[] = MENU.filter(
