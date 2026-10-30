@@ -1,5 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { JENJANG_LIST, type Jenjang } from "@/lib/jenjang";
+import {
+  checkoutSatuSiswa,
+  muatCheckoutMapel,
+  type StatusCheckout,
+} from "@/lib/checkout";
 import type { StatusPasswordGuru } from "@/lib/guru-password-status";
 import type { Soal, TipeSoal } from "@/types";
 
@@ -122,6 +127,34 @@ export interface BarisMonitoring {
   skor_maksimal: number;
   is_online: boolean;
   server_now: string;
+  /** null = checkout tidak berlaku (mapel lama / migrasi 0024 belum jalan). */
+  checkout_status: StatusCheckout | null;
+  checkout_at: string | null;
+  checkout_masih_di_ruang: boolean | null;
+}
+
+/**
+ * Daftar ujian SATU jenjang, untuk guru biasa: Pantau Ujian guru terkunci ke
+ * jenjang tempat dia login, jadi tidak perlu fan-out ke ketiga project.
+ */
+export async function daftarMapelSatuJenjang(
+  jenjang: Jenjang
+): Promise<HasilJenjang<MapelMonitoring>> {
+  try {
+    const client = await createAdminClient(jenjang);
+    const { data, error } = await client.rpc("get_daftar_mapel_monitoring");
+    if (error) throw new Error(error.message);
+    return { jenjang, data: (data ?? []) as MapelMonitoring[], error: null };
+  } catch (e) {
+    return {
+      jenjang,
+      data: [],
+      error:
+        e instanceof Error
+          ? e.message
+          : "Gagal menghubungi database jenjang ini.",
+    };
+  }
 }
 
 /**
@@ -154,7 +187,27 @@ export async function monitoringSatuMapel(
     p_mapel_id: mapelId,
   });
   if (error) throw new Error(error.message);
-  return (data ?? []) as BarisMonitoring[];
+
+  const baris = (data ?? []) as Omit<
+    BarisMonitoring,
+    "checkout_status" | "checkout_at" | "checkout_masih_di_ruang"
+  >[];
+  const checkout = await muatCheckoutMapel(client, mapelId);
+
+  return baris.map((b) => {
+    const c = checkoutSatuSiswa(
+      checkout,
+      b.siswa_id,
+      b.mulai_at !== null,
+      new Date(b.server_now).getTime()
+    );
+    return {
+      ...b,
+      checkout_status: c.status,
+      checkout_at: c.checkoutAt,
+      checkout_masih_di_ruang: c.masihDiRuang,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +227,75 @@ export async function resetUjianSiswa(
     p_mapel_id: mapelId,
   });
   if (error) throw new Error(error.message);
+}
+
+const UKURAN_KELOMPOK_RESET = 10;
+
+/**
+ * Reset siswa yang ditandai admin. Siswa diproses per kelompok kecil supaya
+ * tidak membuka ratusan koneksi sekaligus, dan satu kegagalan tidak
+ * menghentikan sisanya. Log hanya mencatat siswa yang benar-benar tereset.
+ */
+export async function resetUjianBanyakSiswa(
+  jenjang: Jenjang,
+  siswaIds: string[],
+  mapelId: string,
+  konteks: KonteksAdmin
+): Promise<{ berhasil: number; gagal: number }> {
+  const client = await createAdminClient(jenjang);
+
+  // Diambil sebelum dihapus: sesudahnya skor tidak bisa direkonstruksi.
+  const { data: siswaData } = await client
+    .from("siswa")
+    .select("id, nama, username")
+    .in("id", siswaIds);
+  const { data: nilaiData } = await client
+    .from("nilai")
+    .select("siswa_id, total_skor")
+    .eq("mapel_id", mapelId)
+    .in("siswa_id", siswaIds);
+  const skorMap = new Map(
+    (nilaiData ?? []).map((n) => [n.siswa_id, n.total_skor])
+  );
+
+  const tereset: string[] = [];
+  for (let i = 0; i < siswaIds.length; i += UKURAN_KELOMPOK_RESET) {
+    const kelompok = siswaIds.slice(i, i + UKURAN_KELOMPOK_RESET);
+    await Promise.all(
+      kelompok.map(async (siswaId) => {
+        const { error } = await client.rpc("reset_ujian_siswa", {
+          p_siswa_id: siswaId,
+          p_mapel_id: mapelId,
+        });
+        if (!error) tereset.push(siswaId);
+      })
+    );
+  }
+
+  if (tereset.length > 0) {
+    await catatLogManual(
+      client,
+      konteks,
+      jenjang,
+      "reset_ujian",
+      "jawaban_siswa",
+      mapelId,
+      {
+        mapel_id: mapelId,
+        jumlah_siswa: tereset.length,
+        siswa: (siswaData ?? [])
+          .filter((s) => tereset.includes(s.id))
+          .map((s) => ({
+            id: s.id,
+            nama: s.nama,
+            username: s.username,
+            total_skor_sebelum_reset: skorMap.get(s.id) ?? null,
+          })),
+      }
+    );
+  }
+
+  return { berhasil: tereset.length, gagal: siswaIds.length - tereset.length };
 }
 
 export async function paksaKumpulkanSiswa(
@@ -623,9 +745,12 @@ export interface BarisNilaiAdmin {
   username: string;
   kelasNama: string;
   submitted: boolean;
+  sudahMulai: boolean;
   totalSkor: number | null;
   isOverride: boolean;
   detailJsonb: Record<string, number>;
+  checkoutStatus: StatusCheckout | null;
+  checkoutMasihDiRuang: boolean | null;
 }
 
 export interface DetailNilaiMapelAdmin {
@@ -732,9 +857,11 @@ export async function detailNilaiMapelAdmin(
 
   const { data: jawabanData, error: errJawaban } = await client
     .from("jawaban_siswa")
-    .select("siswa_id, submitted_at")
+    .select("siswa_id, submitted_at, mulai_at")
     .eq("mapel_id", mapelId);
   catatGalat("jawaban_siswa", errJawaban);
+
+  const checkout = await muatCheckoutMapel(client, mapelId);
 
   const { data: nilaiData, error: errNilai } = await client
     .from("nilai")
@@ -745,6 +872,12 @@ export async function detailNilaiMapelAdmin(
   const submittedMap = new Map(
     (jawabanData ?? []).map((j) => [j.siswa_id, j.submitted_at !== null])
   );
+  const mulaiSet = new Set(
+    (jawabanData ?? [])
+      .filter((j) => j.mulai_at !== null)
+      .map((j) => j.siswa_id)
+  );
+  const sekarangMs = Date.now();
   const nilaiMap = new Map(
     (nilaiData ?? []).map((n) => [
       n.siswa_id,
@@ -758,15 +891,20 @@ export async function detailNilaiMapelAdmin(
 
   const siswaList: BarisNilaiAdmin[] = (siswaData ?? []).map((s) => {
     const nilai = nilaiMap.get(s.id);
+    const sudahMulai = mulaiSet.has(s.id);
+    const c = checkoutSatuSiswa(checkout, s.id, sudahMulai, sekarangMs);
     return {
       siswaId: s.id,
       nama: s.nama,
       username: s.username,
       kelasNama: kelasNamaMap.get(s.kelas_id) ?? "-",
       submitted: submittedMap.get(s.id) ?? false,
+      sudahMulai,
       totalSkor: nilai?.totalSkor ?? null,
       isOverride: nilai?.isOverride ?? false,
       detailJsonb: nilai?.detailJsonb ?? {},
+      checkoutStatus: c.status,
+      checkoutMasihDiRuang: c.masihDiRuang,
     };
   });
 

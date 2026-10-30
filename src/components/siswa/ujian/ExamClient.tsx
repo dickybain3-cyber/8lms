@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatSisaWaktu, formatWaktu, soalSudahTerjawab } from "@/lib/ujian";
 import { TIPE_LABEL } from "@/lib/soal";
+import { EVENT_CEK_CHECKOUT } from "@/lib/checkout";
 import type { SoalSiswa, TipeSoal } from "@/types";
 import SoalViewer from "@/components/siswa/SoalViewer/SoalViewer";
 import {
@@ -371,7 +372,10 @@ export default function ExamClient({
     const ok = await sinkronWaktu();
     setMemulai(false);
     setUnduhan({ fase: "idle", selesai: 0, total: 0 });
-    if (ok) router.refresh();
+    if (ok) {
+      window.dispatchEvent(new Event(EVENT_CEK_CHECKOUT));
+      router.refresh();
+    }
   }
 
   // -------------------------------------------------------------------------

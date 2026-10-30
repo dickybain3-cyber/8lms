@@ -224,6 +224,8 @@ export interface BarisRekapNilai {
   isOverride: boolean;
   jumlahBenar: number;
   jumlahSalah: number;
+  /** Mis. "Belum checkout". Nilai tetap masuk; ini hanya catatan. */
+  catatan: string;
 }
 
 export interface KelasRekapNilai {
@@ -237,8 +239,8 @@ function fmtSkorExcel(n: number | null): string | number {
 }
 
 /**
- * Satu baris teks di kop, digabung selebar tabel (5 kolom: No, Nama Siswa,
- * Nilai, Jumlah Benar, Jumlah Salah), dengan gaya yang dioper pemanggil
+ * Satu baris teks di kop, digabung selebar tabel (6 kolom: No, Nama Siswa,
+ * Nilai, Jumlah Benar, Jumlah Salah, Catatan), dengan gaya yang dioper pemanggil
  * supaya baris pertama (nama mapel) bisa lebih besar & tebal daripada
  * baris ketiga (nama sekolah).
  */
@@ -248,7 +250,7 @@ function tulisBarisKop(
   teks: string,
   gaya: Partial<import("exceljs").Font>
 ): void {
-  ws.mergeCells(baris, 1, baris, 5);
+  ws.mergeCells(baris, 1, baris, 6);
   const sel = ws.getCell(baris, 1);
   sel.value = teks;
   sel.font = { name: "Calibri", ...gaya };
@@ -285,6 +287,7 @@ export async function unduhExcelRekapNilai(opts: {
       { width: 12 }, // Nilai
       { width: 15 }, // Jumlah Benar
       { width: 15 }, // Jumlah Salah
+      { width: 34 }, // Catatan
     ];
 
     // ── Kop 4 baris ──
@@ -314,7 +317,14 @@ export async function unduhExcelRekapNilai(opts: {
     // Baris 5 dibiarkan kosong sebagai pemisah kop dari tabel.
     const barisHeader = 6;
     const header = ws.getRow(barisHeader);
-    header.values = ["No", "Nama Siswa", "Nilai", "Jumlah Benar", "Jumlah Salah"];
+    header.values = [
+      "No",
+      "Nama Siswa",
+      "Nilai",
+      "Jumlah Benar",
+      "Jumlah Salah",
+      "Catatan",
+    ];
     header.eachCell((sel) => {
       sel.font = { bold: true, color: { argb: "FFFFFFFF" } };
       sel.fill = {
@@ -349,6 +359,7 @@ export async function unduhExcelRekapNilai(opts: {
         s.submitted ? fmtSkorExcel(s.totalSkor) + (s.isOverride ? " *" : "") : "Belum submit",
         s.submitted ? s.jumlahBenar : "",
         s.submitted ? s.jumlahSalah : "",
+        s.catatan,
       ];
 
       if (s.isOverride) adaOverride = true;
@@ -366,6 +377,9 @@ export async function unduhExcelRekapNilai(opts: {
         if (!s.submitted) {
           sel.font = { color: { argb: "FF94A3B8" }, italic: true };
         }
+        if (kolomKe === 6 && s.catatan) {
+          sel.font = { bold: true, color: { argb: "FFDC2626" } };
+        }
         if (i % 2 === 1) {
           sel.fill = {
             type: "pattern",
@@ -379,7 +393,7 @@ export async function unduhExcelRekapNilai(opts: {
     let barisSetelahTabel = barisHeader + kelas.siswa.length + 1;
 
     if (adaOverride) {
-      ws.mergeCells(barisSetelahTabel, 1, barisSetelahTabel, 5);
+      ws.mergeCells(barisSetelahTabel, 1, barisSetelahTabel, 6);
       const sel = ws.getCell(barisSetelahTabel, 1);
       sel.value = "* Nilai disesuaikan manual oleh guru (override).";
       sel.font = { italic: true, size: 9, color: { argb: "FF94A3B8" } };

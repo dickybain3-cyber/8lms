@@ -5,16 +5,18 @@ import { createClient } from "@/lib/supabase/server";
 import {
   monitoringSatuMapel,
   resetUjianSiswa,
+  resetUjianBanyakSiswa,
   paksaKumpulkanSiswa,
   resetUjianSatuMapel,
   type BarisMonitoring,
 } from "@/lib/supabase/admin-multi";
+import { getSesiGuru, pastikanBolehKeJenjang } from "@/lib/admin-guard";
 import { isJenjangValid, type Jenjang } from "@/lib/jenjang";
 
 /**
  * SATU-SATUNYA gerbang menuju service_role lintas jenjang.
  *
- * Semua fungsi di file ini memanggil `pastikanAdmin()` sebagai baris
+ * Semua fungsi TULIS di file ini memanggil `pastikanAdmin()` sebagai baris
  * PERTAMA, tanpa kecuali. Alasannya sudah dijelaskan panjang di
  * admin-multi.ts: begitu service_role dipakai, RLS tidak lagi menjaga
  * apa pun, dan pemeriksaan di sinilah satu-satunya yang tersisa.
@@ -75,8 +77,14 @@ export async function ambilMonitoring(
   mapelId: string
 ): Promise<{ baris: BarisMonitoring[]; error: string | null }> {
   try {
-    await pastikanAdmin();
     const jenjang = parseJenjangWajib(jenjangRaw);
+    // Baca saja, jadi guru biasa boleh, terbatas pada jenjang sesinya. Semua
+    // aksi tulis di bawah tetap lewat `pastikanAdmin()`.
+    const tidakBoleh = await pastikanBolehKeJenjang(
+      await getSesiGuru(),
+      jenjang
+    );
+    if (tidakBoleh) throw new Error(tidakBoleh);
     const baris = await monitoringSatuMapel(jenjang, mapelId);
     return { baris, error: null };
   } catch (e) {
@@ -106,6 +114,46 @@ export async function aksiResetSiswa(
     return {
       ok: false,
       pesan: e instanceof Error ? e.message : "Gagal mereset ujian siswa.",
+    };
+  }
+}
+
+/** Reset siswa yang ditandai di tabel. Konfirmasi ada di BilahResetMassal. */
+export async function aksiResetTerpilih(
+  jenjangRaw: number,
+  siswaIds: string[],
+  mapelId: string
+): Promise<HasilAksi> {
+  try {
+    await pastikanAdmin();
+    const jenjang = parseJenjangWajib(jenjangRaw);
+    if (siswaIds.length === 0) {
+      throw new Error("Belum ada siswa yang ditandai.");
+    }
+    const sesi = await getSesiGuru();
+    const { berhasil, gagal } = await resetUjianBanyakSiswa(
+      jenjang,
+      siswaIds,
+      mapelId,
+      {
+        guruId: sesi.guruId,
+        nama: sesi.nama,
+        email: sesi.email,
+        jenjangSesi: sesi.jenjang,
+      }
+    );
+    revalidatePath("/admin/monitoring");
+    return {
+      ok: gagal === 0,
+      pesan:
+        gagal === 0
+          ? `${berhasil} siswa direset. Mereka bisa mulai lagi dari awal.`
+          : `${berhasil} siswa direset, ${gagal} siswa gagal. Coba lagi untuk yang gagal.`,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      pesan: e instanceof Error ? e.message : "Gagal mereset ujian.",
     };
   }
 }

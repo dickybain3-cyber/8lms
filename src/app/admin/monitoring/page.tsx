@@ -1,15 +1,18 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { daftarMapelSemuaJenjang } from "@/lib/supabase/admin-multi";
+import { getSesiGuru } from "@/lib/admin-guard";
+import {
+  daftarMapelSatuJenjang,
+  daftarMapelSemuaJenjang,
+} from "@/lib/supabase/admin-multi";
 import MonitoringClient from "./MonitoringClient";
 
 /**
- * /admin/monitoring — pengawasan ujian berjalan LINTAS 3 jenjang dalam satu
- * halaman, tanpa admin perlu logout dan berganti jenjang.
+ * /admin/monitoring — pengawasan ujian berjalan.
  *
  * Yang dikerjakan di server (di sini):
- *   - memastikan yang membuka memang admin (bukan guru mapel biasa)
- *   - menarik daftar ujian dari KETIGA project sekaligus (paralel)
+ *   - admin: menarik daftar ujian dari KETIGA project sekaligus (paralel)
+ *   - guru biasa: hanya jenjang tempat dia login, dan hanya bisa melihat
+ *     (aksi reset/kumpulkan ditolak juga di actions.ts, bukan cuma disembunyikan)
  * Yang dikerjakan di client (MonitoringClient):
  *   - memilih ujian, polling isi tabel tiap 15 detik, aksi reset/kumpulkan
  *
@@ -18,26 +21,14 @@ import MonitoringClient from "./MonitoringClient";
  * pembaruan tanpa memuat ulang seluruh halaman.
  */
 export default async function MonitoringPage() {
-  const supabase = await createClient();
+  const sesi = await getSesiGuru();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: guru } = await supabase
-    .from("guru")
-    .select("nama, is_admin")
-    .eq("auth_id", user?.id ?? "")
-    .maybeSingle();
-
-  if (!guru?.is_admin) {
+  if (!sesi.guruId || !sesi.jenjang) {
     return (
       <div className="mx-auto max-w-lg rounded-xl border border-ink/10 bg-white p-6 text-center">
-        <p className="mb-2 font-serif text-lg text-ink">Khusus admin</p>
+        <p className="mb-2 font-serif text-lg text-ink">Khusus guru</p>
         <p className="mb-5 text-sm text-ink/60">
-          Halaman pengawasan ujian lintas kelas hanya bisa dibuka oleh akun
-          admin. Guru mapel tetap bisa melihat rekap dan statistik kelasnya
-          sendiri lewat menu Rekap Penilaian.
+          Halaman ini hanya bisa dibuka oleh akun guru atau admin.
         </p>
         <Link
           href="/admin"
@@ -49,10 +40,13 @@ export default async function MonitoringPage() {
     );
   }
 
-  const hasilPerJenjang = await daftarMapelSemuaJenjang();
+  const hasilPerJenjang = sesi.isAdmin
+    ? await daftarMapelSemuaJenjang()
+    : [await daftarMapelSatuJenjang(sesi.jenjang)];
 
   return (
     <MonitoringClient
+      bolehAksi={sesi.isAdmin}
       hasilPerJenjang={hasilPerJenjang.map((h) => ({
         jenjang: h.jenjang,
         error: h.error,
