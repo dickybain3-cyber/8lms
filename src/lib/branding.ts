@@ -16,7 +16,7 @@ export const SEKOLAH = {
   kota: "PROBOLINGGO",
   namaPendek: "LMS SMPN 8 Probolinggo",
   tahun: 2026,
-  pembuat: "dhickz666",
+  pembuat: "dhickz6661",
 } as const;
 
 /** Logo sekolah (PNG transparan). */
