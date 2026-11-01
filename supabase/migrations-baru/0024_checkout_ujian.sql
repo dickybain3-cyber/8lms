@@ -36,7 +36,12 @@ begin
        and column_name = 'checkout_wajib'
   ) then
     alter table mapel add column checkout_wajib boolean not null default true;
+    -- Trigger log mapel (0009) menolak penulisan tanpa sesi guru, termasuk dari
+    -- SQL Editor. Ini pengisian kolom baru, bukan aksi guru yang perlu dicatat.
+    -- Pakai USER, bukan nama trigger: namanya tidak sama di semua project.
+    alter table mapel disable trigger user;
     update mapel set checkout_wajib = false where waktu_selesai <= now();
+    alter table mapel enable trigger user;
   end if;
 end;
 $$;
