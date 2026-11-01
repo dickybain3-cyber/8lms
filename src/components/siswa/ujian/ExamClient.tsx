@@ -7,7 +7,6 @@ import { createClient } from "@/lib/supabase/client";
 import { formatSisaWaktu, formatWaktu, soalSudahTerjawab } from "@/lib/ujian";
 import { TIPE_LABEL } from "@/lib/soal";
 import { EVENT_CEK_CHECKOUT } from "@/lib/checkout";
-import { SEKOLAH } from "@/lib/branding";
 import type { SoalSiswa, TipeSoal } from "@/types";
 import SoalViewer from "@/components/siswa/SoalViewer/SoalViewer";
 import {
@@ -866,10 +865,6 @@ export default function ExamClient({
           >
             Kembali ke dashboard
           </Link>
-
-          <p className="mt-4 text-[0.7rem] text-ink/40">
-            Dibuat oleh {SEKOLAH.pembuat}
-          </p>
         </div>
       </div>
     );
