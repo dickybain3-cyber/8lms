@@ -715,3 +715,15 @@ body {
     break-inside: avoid;
   }
 }
+
+/* Naskah soal hasil Buat Soal AI (kartu edit) — markup dari src/lib/ai/draf.ts. */
+.naskah-soal p { margin: 0 0 0.35rem; }
+.naskah-soal img { max-width: 100%; height: auto; border-radius: 0.5rem; }
+.naskah-soal .opsi td { padding: 0.1rem 0.4rem; vertical-align: top; }
+.naskah-soal .huruf { width: 1.6rem; font-weight: 600; }
+.naskah-soal .grid { display: table; border-collapse: collapse; width: 100%; margin: 0.35rem 0; }
+.naskah-soal .grid th, .naskah-soal .grid td { border: 1px solid #cbd5e1; padding: 0.25rem 0.5rem; vertical-align: top; }
+.naskah-soal .grid th { background: #f1f5f9; font-size: 0.75rem; }
+.naskah-soal .c { text-align: center; }
+.naskah-soal .ket { font-style: italic; color: #64748b; font-size: 0.8rem; }
+.naskah-soal .meta { display: none; }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { aksesAi, bacaBody, gagal, responsGalat } from "@/lib/ai/akses";
 import { panggilGeminiJson } from "@/lib/ai/gemini";
+import { pakaiTiket } from "@/lib/ai/kuota";
 import {
   INSTRUKSI_SISTEM,
   buatPromptBatch,
@@ -15,7 +16,12 @@ import {
 /**
  * POST /api/ai/soal — buat SATU batch draf soal.
  *
- * Body: { jenjang?, mapelId, rencana, indeksBatch, hindari? }
+ * Body: { jenjang?, mapelId? | mapelNama?, rencana, indeksBatch, hindari?, tiket }
+ *
+ * `tiket` = id `ai_sesi_generate` dari server action `mulaiGenerateAi`
+ * (satu kuota harian). Tiap panggilan memakai satu jatah panggilan tiket.
+ * `mapelNama` dipakai halaman "Buat Soal AI" di sidebar yang tidak
+ * terikat mapel kegiatan mana pun.
  *
  * Browser memanggil route ini berulang (indeksBatch 0, 1, 2, …) dan
  * menampilkan kemajuan. Rencana dipecah ULANG di server dengan fungsi
@@ -45,24 +51,35 @@ export async function POST(req: Request) {
   if (!batch) return gagal("Nomor batch di luar jangkauan.");
 
   const mapelId = String(body.mapelId ?? "");
-  const { data: mapel } = await akses.client
-    .from("mapel")
-    .select("id, nama")
-    .eq("id", mapelId)
-    .maybeSingle();
-  if (!mapel) return gagal("Mapel tidak ditemukan di kelas ini.", 404);
+  let namaMapel: string;
+  if (mapelId) {
+    const { data: mapel } = await akses.client
+      .from("mapel")
+      .select("id, nama")
+      .eq("id", mapelId)
+      .maybeSingle();
+    if (!mapel) return gagal("Mapel tidak ditemukan di kelas ini.", 404);
+    namaMapel = mapel.nama as string;
+  } else {
+    namaMapel = rapikanTeks(body.mapelNama, 80);
+    if (!namaMapel) return gagal("Isi nama mata pelajaran dulu.");
+  }
+
+  const galatTiket = await pakaiTiket(akses.sesi, body.tiket);
+  if (galatTiket) return gagal(galatTiket, 403);
 
   const hindari = Array.isArray(body.hindari)
     ? body.hindari.map((h) => rapikanTeks(h, 120)).filter(Boolean).slice(-40)
     : [];
 
   const prompt = buatPromptBatch(batch, {
-    mapel: mapel.nama as string,
+    mapel: namaMapel,
     jenjang: akses.jenjang,
     topik: rencana.topik,
     kesulitan: rencana.kesulitan,
     jumlahOpsi: rencana.jumlahOpsi,
     catatan: rencana.catatan,
+    pemandu: rencana.pemandu,
     hindari,
   });
 

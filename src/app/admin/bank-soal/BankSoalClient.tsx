@@ -387,6 +387,7 @@ function KartuBankSoal({
         <p className="mt-1.5 text-[0.68rem] text-slate-400">
           {soal.dibuat_oleh_nama ?? "Tanpa nama"}
           {soal.asal_event_nama ? ` · dari ${soal.asal_event_nama}` : ""}
+          {soal.paket_nama ? ` · paket ${soal.paket_nama}` : ""}
         </p>
       </div>
 

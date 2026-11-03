@@ -89,6 +89,45 @@ export const BATAS_BATCH: Record<TipeSoal, number> = {
   menjodohkan: 5,
 };
 
+/** Jawaban "pertanyaan pemandu" guru — semuanya opsional. */
+export interface PemanduSoal {
+  /** Tujuan pembelajaran / capaian yang diukur. */
+  tujuan: string;
+  jenisAsesmen: string;
+  /** Kode level kognitif (C1–C6) yang diutamakan. */
+  levelKognitif: string[];
+  /** true = sebagian soal memakai stimulus (bacaan/kasus/data) ala AKM. */
+  stimulus: boolean;
+  /** Teks contoh soal dari guru (hasil ekstrak dokumen), sebagai acuan gaya. */
+  contoh: string;
+}
+
+export const JENIS_ASESMEN = [
+  "Ulangan harian",
+  "Penilaian Tengah Semester (PTS)",
+  "Penilaian Akhir Semester (PAS)",
+  "Penilaian Akhir Tahun (PAT)",
+  "Latihan / kuis",
+  "Remedial",
+  "Pengayaan",
+] as const;
+
+export const LEVEL_KOGNITIF: { kode: string; label: string }[] = [
+  { kode: "C1", label: "C1 Mengingat" },
+  { kode: "C2", label: "C2 Memahami" },
+  { kode: "C3", label: "C3 Menerapkan" },
+  { kode: "C4", label: "C4 Menganalisis" },
+  { kode: "C5", label: "C5 Mengevaluasi" },
+  { kode: "C6", label: "C6 Mencipta" },
+];
+
+/** Batas teks contoh soal yang ikut ke tiap prompt batch (hemat token). */
+export const MAKS_CONTOH = 6000;
+
+export function pemanduKosong(): PemanduSoal {
+  return { tujuan: "", jenisAsesmen: "", levelKognitif: [], stimulus: false, contoh: "" };
+}
+
 export interface RencanaGenerate {
   topik: string[];
   jumlah: JumlahPerTipe;
@@ -98,6 +137,7 @@ export interface RencanaGenerate {
   jumlahOpsi: 4 | 5;
   catatan: string;
   totalSkor: number;
+  pemandu?: PemanduSoal;
 }
 
 export function jumlahKosong(): JumlahPerTipe {
@@ -106,6 +146,50 @@ export function jumlahKosong(): JumlahPerTipe {
 
 export function totalSoal(jumlah: JumlahPerTipe): number {
   return TIPE_SOAL_LIST.reduce((n, t) => n + (jumlah[t] || 0), 0);
+}
+
+/**
+ * Samakan jumlah per bentuk dengan total baru yang diketik guru.
+ * Total naik → selisihnya masuk ke bentuk `ke` (default: bentuk pertama
+ * yang sudah terisi, atau Pilihan Ganda). Total turun → dikurangi dari
+ * bentuk paling bawah dulu, supaya isian guru di atas tidak ikut berubah.
+ */
+export function sesuaikanTotal(
+  jumlah: JumlahPerTipe,
+  totalBaru: number,
+  ke?: TipeSoal
+): JumlahPerTipe {
+  const hasil = { ...jumlah };
+  const target = Math.max(0, Math.floor(totalBaru));
+  let selisih = target - totalSoal(hasil);
+  if (selisih > 0) {
+    const tujuan = ke ?? TIPE_SOAL_LIST.find((t) => hasil[t] > 0) ?? "pilgan_biasa";
+    hasil[tujuan] += selisih;
+    return hasil;
+  }
+  for (const t of [...TIPE_SOAL_LIST].reverse()) {
+    if (selisih >= 0) break;
+    const kurang = Math.min(hasil[t], -selisih);
+    hasil[t] -= kurang;
+    selisih += kurang;
+  }
+  return hasil;
+}
+
+/**
+ * Pindahkan `n` soal dari satu bentuk ke bentuk lain; total tetap.
+ * Dibatasi isi bentuk asal (tidak bisa minus).
+ */
+export function pindahJumlah(
+  jumlah: JumlahPerTipe,
+  dari: TipeSoal,
+  ke: TipeSoal,
+  n = 1
+): JumlahPerTipe {
+  if (dari === ke) return jumlah;
+  const geser = Math.max(0, Math.min(Math.floor(n), jumlah[dari] || 0));
+  if (geser === 0) return jumlah;
+  return { ...jumlah, [dari]: jumlah[dari] - geser, [ke]: (jumlah[ke] || 0) + geser };
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +389,7 @@ export interface KonteksPrompt {
   kesulitan: Kesulitan;
   jumlahOpsi: 4 | 5;
   catatan: string;
+  pemandu?: PemanduSoal;
   /** Cuplikan soal yang sudah dibuat batch sebelumnya — supaya tidak
    *  ada soal kembar antar-batch. */
   hindari: string[];
@@ -367,6 +452,34 @@ export function buatPromptBatch(batch: BatchGenerate, k: KonteksPrompt): string 
   }
 
   baris.push('Isi "pembahasan" dengan penjelasan singkat (1-2 kalimat) mengapa kuncinya benar — ini hanya untuk guru.');
+
+  const p = k.pemandu;
+  if (p) {
+    if (p.tujuan.trim()) {
+      baris.push(`Tujuan pembelajaran yang diukur: ${p.tujuan.trim()}`);
+    }
+    if (p.jenisAsesmen.trim()) {
+      baris.push(`Soal dipakai untuk: ${p.jenisAsesmen.trim()}.`);
+    }
+    if (p.levelKognitif.length > 0) {
+      baris.push(
+        `Utamakan level kognitif ${p.levelKognitif.join(", ")} (taksonomi Bloom revisi). Sesuaikan kata kerja pertanyaan dengan level itu.`
+      );
+    }
+    if (p.stimulus) {
+      baris.push(
+        "Sekitar separuh soal memakai stimulus singkat (bacaan 2-4 kalimat, tabel data dalam teks, atau kasus sehari-hari) yang ditulis di awal pertanyaan, seperti soal AKM."
+      );
+    }
+    if (p.contoh.trim()) {
+      baris.push(
+        `Berikut contoh soal dari guru sebagai ACUAN gaya bahasa, tingkat kesulitan, dan cakupan materi. JANGAN menyalin atau memparafrasakan contoh ini; buat soal baru yang setara:
+"""
+${p.contoh.trim().slice(0, MAKS_CONTOH)}
+"""`
+      );
+    }
+  }
 
   if (k.catatan.trim()) {
     baris.push(`Catatan tambahan dari guru: ${k.catatan.trim()}`);
@@ -809,7 +922,19 @@ export function validasiRencana(raw: unknown): RencanaGenerate | string {
     : "campuran";
 
   const totalSkor = Number(r.totalSkor);
+  const pRaw = (r.pemandu ?? {}) as Record<string, unknown>;
+  const kodeLevel = new Set(LEVEL_KOGNITIF.map((l) => l.kode));
+  const pemandu: PemanduSoal = {
+    tujuan: rapikanTeks(pRaw.tujuan, 500),
+    jenisAsesmen: rapikanTeks(pRaw.jenisAsesmen, 80),
+    levelKognitif: Array.isArray(pRaw.levelKognitif)
+      ? Array.from(new Set(pRaw.levelKognitif.map((x) => String(x)).filter((x) => kodeLevel.has(x))))
+      : [],
+    stimulus: pRaw.stimulus === true,
+    contoh: rapikanTeks(pRaw.contoh, MAKS_CONTOH),
+  };
   return {
+    pemandu,
     topik,
     jumlah,
     jumlahBergambar,

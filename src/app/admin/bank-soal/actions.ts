@@ -12,6 +12,8 @@ import {
   type FilterBank,
 } from "@/lib/bank-soal";
 import type { TipeSoal } from "@/types";
+import { TIPE_SOAL_LIST } from "@/lib/soal";
+import { validasiKonten } from "@/lib/validasi-soal";
 
 /**
  * Aksi untuk halaman Bank Soal.
@@ -176,6 +178,71 @@ export async function pakaiSoalDariBank(
   revalidatePath(`/admin/event/${mapel.event_id}/mapel/${mapelIdTujuan}`);
 
   return { error: null, jumlah: hasil.jumlah, eventId: mapel.event_id };
+}
+
+/**
+ * Simpan paket soal hasil "Buat Soal AI" langsung ke bank (tanpa lewat
+ * mapel kegiatan). Tiap soal divalidasi dengan aturan yang SAMA dengan
+ * form manual. `paket_nama` (migrasi 0025) memberi nama kumpulan soalnya;
+ * kalau kolom itu belum ada, soal tetap disimpan tanpa nama paket.
+ */
+export async function simpanPaketKeBank(
+  jenjang: Jenjang | null,
+  input: {
+    mapelNama: string;
+    paketNama: string;
+    soal: { tipe: TipeSoal; skor: number; konten: Record<string, unknown> }[];
+  }
+): Promise<{ error: string | null; jumlah: number; tanpaNamaPaket?: boolean }> {
+  const { client, error } = await pilihClient(jenjang);
+  if (!client) return { error, jumlah: 0 };
+
+  const mapelNama = String(input.mapelNama ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const paketNama = String(input.paketNama ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+  if (!mapelNama) return { error: "Nama mata pelajaran wajib diisi.", jumlah: 0 };
+  if (!paketNama) return { error: "Beri nama paket soal dulu.", jumlah: 0 };
+  const daftar = Array.isArray(input.soal) ? input.soal.slice(0, 100) : [];
+  if (daftar.length === 0) return { error: "Tidak ada soal untuk disimpan.", jumlah: 0 };
+
+  for (let i = 0; i < daftar.length; i++) {
+    const s = daftar[i];
+    if (!TIPE_SOAL_LIST.includes(s.tipe)) return { error: `Soal ${i + 1}: tipe tidak valid.`, jumlah: 0 };
+    if (!(Number(s.skor) > 0)) return { error: `Soal ${i + 1}: skor harus lebih dari 0.`, jumlah: 0 };
+    const salah = validasiKonten(s.tipe, s.konten ?? {});
+    if (salah) return { error: `Soal ${i + 1}: ${salah}`, jumlah: 0 };
+  }
+
+  const sesi = await getSesiGuru();
+  const baris = daftar.map((s) => ({
+    mapel_nama: mapelNama,
+    tipe: s.tipe,
+    skor: Number(s.skor),
+    konten_jsonb: s.konten,
+    gambar_url: null,
+    asal_soal_id: null,
+    asal_event_nama: null,
+    dibuat_oleh: sesi.guruId,
+    dibuat_oleh_nama: sesi.nama,
+  }));
+
+  let tanpaNamaPaket = false;
+  let { error: tulisError } = await client
+    .from("bank_soal")
+    .insert(baris.map((b) => ({ ...b, paket_nama: paketNama })));
+  if (tulisError && /paket_nama/.test(tulisError.message)) {
+    tanpaNamaPaket = true;
+    ({ error: tulisError } = await client.from("bank_soal").insert(baris));
+  }
+  if (tulisError) {
+    console.error("[bank-soal] simpan paket AI:", tulisError.message);
+    return {
+      error: "Gagal menyimpan ke Bank Soal. Pastikan migrasi 0014_bank_soal.sql sudah dijalankan.",
+      jumlah: 0,
+    };
+  }
+
+  revalidatePath("/admin/bank-soal");
+  return { error: null, jumlah: baris.length, tanpaNamaPaket };
 }
 
 /**

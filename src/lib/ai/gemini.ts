@@ -97,6 +97,11 @@ async function urutanKunci(jenjang: Jenjang): Promise<string[]> {
   return [...siap, ...lelah];
 }
 
+/** Teks biasa, atau beberapa bagian (teks + berkas base64, mis. PDF/gambar). */
+export type PromptGemini =
+  | string
+  | ({ text: string } | { inlineData: { mimeType: string; data: string } })[];
+
 export interface OpsiPanggilan {
   sistem?: string;
   /** Skema `responseSchema`. Kosong = minta JSON tanpa skema. */
@@ -116,7 +121,7 @@ interface ResponsGemini {
 async function satuPanggilan(
   model: string,
   kunci: string,
-  prompt: string,
+  prompt: PromptGemini,
   opsi: OpsiPanggilan,
   pakaiSkema: boolean
 ): Promise<{ status: number; body: ResponsGemini | null }> {
@@ -137,7 +142,9 @@ async function satuPanggilan(
           ...(opsi.sistem
             ? { systemInstruction: { parts: [{ text: opsi.sistem }] } }
             : {}),
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          contents: [
+            { role: "user", parts: typeof prompt === "string" ? [{ text: prompt }] : prompt },
+          ],
           generationConfig: {
             temperature: opsi.suhu ?? 0.8,
             responseMimeType: "application/json",
@@ -166,7 +173,7 @@ async function satuPanggilan(
  */
 export async function panggilGeminiJson<T = unknown>(
   jenjang: Jenjang,
-  prompt: string,
+  prompt: PromptGemini,
   opsi: OpsiPanggilan = {}
 ): Promise<T> {
   const daftar = await urutanKunci(jenjang);

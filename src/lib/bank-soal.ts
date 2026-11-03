@@ -43,6 +43,8 @@ export interface BarisBankSoal {
   asal_soal_id: string | null;
   asal_event_nama: string | null;
   dibuat_oleh_nama: string | null;
+  /** Nama paket (migrasi 0025) — diisi saat hasil Buat Soal AI disimpan ke bank. */
+  paket_nama?: string | null;
   created_at: string;
 }
 
@@ -165,9 +167,10 @@ export async function cariBankSoal(
 ): Promise<BarisBankSoal[]> {
   let q = client
     .from("bank_soal")
-    .select(
-      "id, mapel_nama, mapel_nama_norm, tipe, skor, konten_jsonb, gambar_url, asal_soal_id, asal_event_nama, dibuat_oleh_nama, created_at"
-    )
+    // `*`, bukan daftar kolom: `paket_nama` (migrasi 0025) belum tentu
+    // ada di ketiga project, dan menyebutnya eksplisit membuat seluruh
+    // pencarian gagal di project yang belum dimigrasi.
+    .select("*")
     .order("created_at", { ascending: false })
     .limit(filter.limit ?? 200);
 

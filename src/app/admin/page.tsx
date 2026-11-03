@@ -3,6 +3,9 @@ import { getSesiGuru } from "@/lib/admin-guard";
 import { muatEventSesi } from "@/lib/event-sesi";
 import DaftarEventKelompok from "@/components/admin/DaftarEventKelompok";
 import { Info, Kosong, TOMBOL_UTAMA } from "@/components/ui/Panel";
+import PermintaanKuotaAi from "@/components/admin/PermintaanKuotaAi";
+import { daftarPermintaan } from "@/lib/ai/kuota";
+import { JENJANG_LIST } from "@/lib/jenjang";
 
 /** Jumlah kegiatan SELESAI yang ditampilkan di dashboard; sisanya lewat "Lihat semua". */
 const BATAS_SELESAI_DI_DASHBOARD = 6;
@@ -19,13 +22,28 @@ const PINTASAN = [
   { href: "/admin/bank-soal", label: "Bank Soal", ikon: "fa-box-archive", warna: "bg-sky-50 text-sky-600", adminSaja: false },
 ] as const;
 
+/** Permintaan kuota AI dari ketiga jenjang (admin saja). */
+async function muatPermintaanAi() {
+  const hasil = await Promise.all(JENJANG_LIST.map((j) => daftarPermintaan(j)));
+  return {
+    menunggu: hasil.flatMap((h) => h.menunggu).sort((a, b) => a.dibuatAt.localeCompare(b.dibuatAt)),
+    riwayat: hasil.flatMap((h) => h.riwayat).slice(0, 8),
+    galat: hasil.some((h) => h.galat)
+      ? [`Migrasi 0025_ai_kuota.sql belum jalan di kelas ${JENJANG_LIST.filter((_, i) => hasil[i].galat).join(", ")}.`]
+      : [],
+  };
+}
+
 export default async function AdminHomePage() {
   const [sesi, { daftar, error }] = await Promise.all([getSesiGuru(), muatEventSesi()]);
+  const permintaanAi = sesi.isAdmin ? await muatPermintaanAi() : null;
 
   return (
     <div>
       {/* Sapaan sudah ada di bilah atas — dashboard langsung ke pintasan
           supaya daftar kegiatan terlihat tanpa menggulir. */}
+      {permintaanAi && <PermintaanKuotaAi {...permintaanAi} />}
+
       <nav aria-label="Pintasan" className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {PINTASAN.filter((p) => sesi.isAdmin || !p.adminSaja).slice(0, 4).map((p) => (
           <Link

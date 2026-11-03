@@ -63,6 +63,9 @@ const MENU: (MenuTunggal | MenuGrup)[] = [
       // sebagai tujuan tersendiri. Menaruhnya bersebelahan dengan
       // tempat dia datang membuatnya ketemu tanpa dicari.
       { href: "/admin/bank-soal", label: "Bank Soal", ikon: "fa-box-archive" },
+      // Generator AI yang tidak terikat mapel kegiatan: hasilnya ke Bank
+      // Soal atau diunduh. Kuota 1x/hari per guru (lihat lib/ai/kuota.ts).
+      { href: "/admin/soal-ai", label: "Buat Soal AI", ikon: "fa-wand-magic-sparkles" },
       // Halaman monitoring sudah ada sejak lama tapi TIDAK PERNAH punya
       // tautan di menu mana pun — satu-satunya cara membukanya adalah
       // mengetik /admin/monitoring di bilah alamat. Ini halaman yang
