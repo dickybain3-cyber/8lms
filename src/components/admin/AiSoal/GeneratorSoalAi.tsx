@@ -335,20 +335,34 @@ export default function GeneratorSoalAi({
     });
   }
 
-  async function jalankanGenerate(rencana: RencanaGenerate, tiketPakai: string | null, tambahKe: DrafTinjau[]) {
+  /**
+   * `hanyaIndeks` = ulangi batch tertentu saja (tombol "Ulangi batch yang
+   * gagal") dengan tiket yang SAMA — tidak memakai kuota harian lagi.
+   */
+  async function jalankanGenerate(
+    rencana: RencanaGenerate,
+    tiketPakai: string | null,
+    tambahKe: DrafTinjau[],
+    hanyaIndeks?: number[]
+  ) {
     const daftar = pecahBatch(rencana);
     rencanaTerakhir.current = rencana;
     batal.current = false;
-    setBatchStatus(
-      daftar.map((b) => ({
-        label: `${TIPE_LABEL[b.tipe]} · ${b.jumlah} soal${b.jumlahBergambar ? ` · ${b.jumlahBergambar} bergambar` : ""}`,
-        status: "antre",
-      }))
+    const urutan = hanyaIndeks ?? daftar.map((_, i) => i);
+    setBatchStatus((lama) =>
+      daftar.map((b, i) =>
+        hanyaIndeks && lama[i] && !hanyaIndeks.includes(i)
+          ? lama[i]
+          : {
+              label: `${TIPE_LABEL[b.tipe]} · ${b.jumlah} soal${b.jumlahBergambar ? ` · ${b.jumlahBergambar} bergambar` : ""}`,
+              status: "antre",
+            }
+      )
     );
     setFase("proses");
 
     let hasil = [...tambahKe];
-    for (let i = 0; i < daftar.length; i++) {
+    for (const i of urutan) {
       if (batal.current) break;
       setBatchStatus((s) => s.map((x, j) => (j === i ? { ...x, status: "jalan" } : x)));
       try {
@@ -390,6 +404,15 @@ export default function GeneratorSoalAi({
       // & Lihat draf sudah lengkap. Tanpa AI, tidak memakai kuota.
       await renderSemuaStimulus();
     }
+  }
+
+  const batchGagal = batchStatus.map((b, i) => (b.status === "gagal" ? i : -1)).filter((i) => i >= 0);
+  const bisaUlangi = batchGagal.length > 0 && !!rencanaTerakhir.current && (tiket !== null || kuota?.terbatas === false);
+
+  async function ulangiGagal() {
+    const r = rencanaTerakhir.current;
+    if (!r || batchGagal.length === 0) return;
+    await jalankanGenerate(r, tiket, drafRef.current, batchGagal);
   }
 
   async function renderSemuaStimulus() {
@@ -1326,9 +1349,17 @@ export default function GeneratorSoalAi({
               ))}
             </ul>
             {batchStatus.length > 0 && batchStatus.every((b) => b.status === "ok" || b.status === "gagal") && draf.length === 0 && (
-              <button type="button" onClick={() => setFase("petunjuk")} className="btn-navy-outline mx-auto mt-5 flex">
-                Kembali ke petunjuk
-              </button>
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                {bisaUlangi && (
+                  <button type="button" onClick={ulangiGagal} className="btn-navy">
+                    <i className="fas fa-rotate-right" aria-hidden />
+                    Ulangi {batchGagal.length} batch gagal (tanpa kuota baru)
+                  </button>
+                )}
+                <button type="button" onClick={() => setFase("petunjuk")} className="btn-navy-outline">
+                  Kembali ke petunjuk
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -1357,7 +1388,13 @@ export default function GeneratorSoalAi({
             {batchStatus.some((b) => b.status === "gagal") && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <i className="fas fa-triangle-exclamation mr-2" aria-hidden />
-                Sebagian batch gagal:{" "}
+                {bisaUlangi && (
+                  <button type="button" onClick={ulangiGagal} className="btn-navy float-right ml-3">
+                    <i className="fas fa-rotate-right" aria-hidden />
+                    Ulangi {batchGagal.length} batch gagal
+                  </button>
+                )}
+                Sebagian batch gagal (bisa diulang tanpa memakai kuota baru):{" "}
                 {batchStatus
                   .filter((b) => b.status === "gagal")
                   .map((b) => `${b.label} (${b.pesan})`)

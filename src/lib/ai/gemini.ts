@@ -53,6 +53,8 @@ const BATAS_WAKTU_MS = 35_000;
  * 50 detik, jadi percobaan kunci kedua pasti melewati batas itu.
  */
 const BATAS_TOTAL_MS = 54_000;
+/** Jeda dasar sebelum mengulang setelah 503/500 (bisa diubah lewat env, mis. 0 di uji). */
+const JEDA_SIBUK_MS = Number(process.env.GEMINI_JEDA_SIBUK_MS ?? 1500);
 /** Jangan memulai percobaan baru kalau sisa waktunya kurang dari ini. */
 const SISA_MINIMAL_MS = 10_000;
 
@@ -209,13 +211,18 @@ export async function panggilGeminiJson<T = unknown>(
 
   // Setiap kunci paling banyak dicoba sekali per panggilan; perubahan
   // model/skema mengulang kunci yang sama tanpa dihitung.
-  for (let i = 0; i < daftar.length; i++) {
+  //
+  // Daftar kunci boleh diputar DUA kali selama anggaran waktu masih ada:
+  // 503 (model penuh) sering pulih dalam beberapa detik, jadi percobaan
+  // putaran kedua — setelah jeda — masih berguna.
+  let jumlahSibuk = 0;
+  for (let i = 0; i < daftar.length * 2; i++) {
     const sisa = BATAS_TOTAL_MS - (Date.now() - mulai);
     if (sisa < SISA_MINIMAL_MS) {
       alasanTerakhir = alasanTerakhir || "batas waktu";
       break;
     }
-    const kunci = daftar[i];
+    const kunci = daftar[i % daftar.length];
     // Tanpa responseSchema, model tidak tahu nama field yang diharapkan —
     // skemanya ditempel ke prompt sebagai teks.
     const promptKirim: PromptGemini =
@@ -306,6 +313,15 @@ export async function panggilGeminiJson<T = unknown>(
     alasanTerakhir = status === 504 ? "batas waktu" : `server AI sibuk (${status})`;
     if ((status === 503 || status === 500 || status === 504) && model !== MODEL_CADANGAN) {
       model = MODEL_CADANGAN;
+    }
+    // Jeda bertahap sebelum mencoba lagi (anjuran Google untuk 503/500):
+    // 1,5 s → 3 s → 4,5 s … maks 6 s, selama sisa waktunya cukup.
+    if (status === 503 || status === 500) {
+      jumlahSibuk++;
+      const jeda = Math.min(JEDA_SIBUK_MS * jumlahSibuk, 6_000);
+      if (BATAS_TOTAL_MS - (Date.now() - mulai) - jeda > SISA_MINIMAL_MS) {
+        await new Promise((r) => setTimeout(r, jeda));
+      }
     }
   }
 

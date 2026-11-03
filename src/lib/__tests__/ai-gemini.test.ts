@@ -10,6 +10,7 @@ process.env.GEMINI_API_KEYS_7 = "kunci-uji-satu-aaaa, kunci-uji-dua-bbbb\nkunci-
 process.env.GEMINI_API_KEYS_8 = "kunci-uji-empat-dddd;kunci-uji-lima-eeee";
 delete process.env.GEMINI_API_KEYS;
 delete process.env.GEMINI_MODEL;
+process.env.GEMINI_JEDA_SIBUK_MS = "0";
 
 type Jawab = { status: number; body: unknown };
 let antrean: ((kunci: string, url: string, body: Record<string, unknown>) => Jawab)[] = [];
@@ -149,7 +150,7 @@ async function main() {
   });
 
   await uji("semua kunci gagal → GalatAi 503 tanpa membocorkan kunci", async () => {
-    antrean = [0, 1, 2].map(() => () => ({ status: 503, body: {} }));
+    antrean = [0, 1, 2, 3, 4, 5].map(() => () => ({ status: 503, body: {} }));
     await assert.rejects(panggilGeminiJson(7, "x"), (e: unknown) => {
       assert.ok(e instanceof GalatAi);
       assert.equal((e as InstanceType<typeof GalatAi>).status, 503);
