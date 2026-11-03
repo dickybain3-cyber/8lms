@@ -104,6 +104,31 @@ async function main() {
     assert.equal(tercatat[0].kunci, tercatat[1].kunci);
   });
 
+  await uji("400 tanpa keterangan → lepas thinking, lalu skema (skema ditempel ke prompt)", async () => {
+    antrean = [
+      () => ({ status: 400, body: { error: { message: "Request contains an invalid argument." } } }),
+      () => ({ status: 400, body: { error: { message: "Request contains an invalid argument." } } }),
+      () => ok({ s: 1 }),
+    ];
+    await panggilGeminiJson(7, "x", { skema: { type: "OBJECT", properties: { soal: { type: "ARRAY" } } } });
+    const gc = (i: number) => tercatat[i].body.generationConfig as Record<string, unknown>;
+    assert.ok(gc(0).thinkingConfig && gc(0).responseSchema);
+    assert.ok(!gc(1).thinkingConfig && gc(1).responseSchema);
+    assert.ok(!gc(2).thinkingConfig && !gc(2).responseSchema);
+    const teks = JSON.stringify(tercatat[2].body.contents);
+    assert.match(teks, /nama field persis/);
+    assert.equal(new Set(tercatat.map((t) => t.kunci)).size, 1, "kunci yang sama");
+  });
+
+  await uji("400 terus-menerus → pesan Google ikut tampil, kunci disamarkan", async () => {
+    antrean = [0, 1, 2].map(() => () => ({ status: 400, body: { error: { message: "Bad field AIzaSyTEST1234567890abc" } } }));
+    await assert.rejects(panggilGeminiJson(7, "x", { skema: { type: "OBJECT" } }), (e: unknown) => {
+      assert.ok(e instanceof GalatAi);
+      assert.match((e as Error).message, /Bad field \[kunci\]/);
+      return true;
+    });
+  });
+
   await uji("503 (model penuh) → kunci berikutnya memakai model cadangan", async () => {
     antrean = [() => ({ status: 503, body: { error: { message: "overloaded" } } }), () => ok({ e: 1 })];
     await panggilGeminiJson(7, "x");

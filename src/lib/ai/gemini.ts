@@ -216,7 +216,16 @@ export async function panggilGeminiJson<T = unknown>(
       break;
     }
     const kunci = daftar[i];
-    const { status, body } = await satuPanggilan(model, kunci, prompt, opsi, pakaiSkema, tanpaThinking, sisa);
+    // Tanpa responseSchema, model tidak tahu nama field yang diharapkan —
+    // skemanya ditempel ke prompt sebagai teks.
+    const promptKirim: PromptGemini =
+      pakaiSkema || !opsi.skema
+        ? prompt
+        : (() => {
+            const tambahan = `\n\nKeluarkan HANYA JSON yang mengikuti skema berikut (nama field persis):\n${JSON.stringify(opsi.skema)}`;
+            return typeof prompt === "string" ? prompt + tambahan : [...prompt, { text: tambahan }];
+          })();
+    const { status, body } = await satuPanggilan(model, kunci, promptKirim, opsi, pakaiSkema, tanpaThinking, sisa);
 
     if (status === 200 && body) {
       if (body.promptFeedback?.blockReason) {
@@ -265,21 +274,26 @@ export async function panggilGeminiJson<T = unknown>(
       i--; // ulangi kunci yang sama dengan model cadangan
       continue;
     }
-    if (status === 400 && tanpaThinking && /thinking/i.test(body?.error?.message ?? "")) {
-      tanpaThinking = false;
-      i--;
-      continue;
-    }
-    if (status === 400 && pakaiSkema && /schema/i.test(body?.error?.message ?? "")) {
-      // Model tertentu menolak sebagian fitur responseSchema. Prompt
-      // sudah menjelaskan bentuk JSON-nya, jadi cukup minta JSON biasa.
-      pakaiSkema = false;
-      i--;
-      continue;
-    }
+    // 400 selain kunci tidak sah: model menolak salah satu pengaturan kita.
+    // Pesannya tidak selalu menyebut field-nya (mis. skema stimulus yang
+    // terlalu rumit, atau model yang wajib "berpikir"), jadi pengaturan
+    // opsional dilepas BERTAHAP dengan kunci yang sama: thinkingConfig
+    // dulu, lalu responseSchema (prompt sudah menjelaskan bentuk JSON-nya).
     if (status === 400) {
+      const pesan = body?.error?.message ?? "";
+      console.error(`[gemini] 400 model=${model} thinking=${tanpaThinking} skema=${pakaiSkema}: ${samarkan(pesan)}`);
+      if (tanpaThinking && (/thinking/i.test(pesan) || !/schema/i.test(pesan))) {
+        tanpaThinking = false;
+        i--;
+        continue;
+      }
+      if (pakaiSkema) {
+        pakaiSkema = false;
+        i--;
+        continue;
+      }
       throw new GalatAi(
-        "Permintaan ke AI tidak valid. Coba kurangi panjang catatan/topik.",
+        `Permintaan ke AI ditolak (${samarkan(pesan).slice(0, 140) || "tanpa keterangan"}). Coba kurangi panjang contoh soal/bahan bacaan.`,
         400
       );
     }
@@ -299,6 +313,15 @@ export async function panggilGeminiJson<T = unknown>(
     `Semua kunci Gemini kelas ${jenjang} sedang tidak bisa dipakai (${alasanTerakhir}). Tunggu 1-2 menit lalu coba lagi.`,
     503
   );
+}
+
+/** Pesan error Google tanpa kunci API / nomor project (aman ditampilkan & dicatat). */
+function samarkan(pesan: string): string {
+  return pesan
+    .replace(/AIza[0-9A-Za-z_-]{10,}/g, "[kunci]")
+    .replace(/projects\/[^\s/"']+/g, "projects/[…]")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Beberapa model membungkus JSON dengan ```json … ``` walau diminta JSON. */

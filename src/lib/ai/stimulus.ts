@@ -95,7 +95,7 @@ export function aturanStimulus(boleh: JenisStimulus[]): string {
     baris.push('- bacaan: "teks" 60-150 kata (teks informasi, berita singkat, kasus sehari-hari, atau dialog), faktual dan sesuai usia.');
   }
   if (jenis.includes("tabel")) {
-    baris.push('- tabel: "kolom" 2-5 judul kolom, "baris" 3-7 baris (tiap baris = daftar sel, jumlahnya sama dengan kolom). Angka masuk akal dan konsisten dengan kunci.');
+    baris.push('- tabel: "kolom" 2-5 judul kolom, "baris" 3-7 baris, tiap baris {"sel": [...]} (jumlah sel sama dengan kolom). Angka masuk akal dan konsisten dengan kunci.');
   }
   if (jenis.includes("grafik")) {
     baris.push(
@@ -128,7 +128,12 @@ export const SKEMA_STIMULUS = {
     sumber: S_STR,
     teks: S_STR,
     kolom: { type: "ARRAY", items: S_STR },
-    baris: { type: "ARRAY", items: { type: "ARRAY", items: S_STR } },
+    // Objek {sel: [...]}, bukan array di dalam array: skema Gemini lebih
+    // sering menolak array bersarang langsung.
+    baris: {
+      type: "ARRAY",
+      items: { type: "OBJECT", properties: { sel: { type: "ARRAY", items: S_STR } }, required: ["sel"] },
+    },
     bentuk: S_STR,
     sumbu_x: S_STR,
     sumbu_y: S_STR,
