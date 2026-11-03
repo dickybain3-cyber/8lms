@@ -352,7 +352,21 @@ export default function GeneratorSoalAi({
       if (batal.current) break;
       setBatchStatus((s) => s.map((x, j) => (j === i ? { ...x, status: "jalan" } : x)));
       try {
-        const res = await panggilBatch(rencana, i, hasil.map(cuplikanDraft), tiketPakai);
+        let res: { soal: DraftSoal[]; dibuang: number };
+        try {
+          res = await panggilBatch(rencana, i, hasil.map(cuplikanDraft), tiketPakai);
+        } catch (e) {
+          // Server AI penuh/lambat (503/504) biasanya pulih dalam hitungan
+          // detik. Ulang SEKALI otomatis sebelum batch dinyatakan gagal.
+          if (batal.current || !/50[34]|sibuk|batas waktu|tidak bisa dipakai/i.test((e as Error).message)) throw e;
+          for (let s = 8; s > 0 && !batal.current; s--) {
+            setBatchStatus((st) =>
+              st.map((x, j) => (j === i ? { ...x, pesan: `Server AI sibuk, mencoba lagi dalam ${s} detik…` } : x))
+            );
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+          res = await panggilBatch(rencana, i, hasil.map(cuplikanDraft), tiketPakai);
+        }
         hasil = [...hasil, ...res.soal.map(keTinjau)];
         setDraf(hasil);
         setBatchStatus((s) =>

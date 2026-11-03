@@ -92,6 +92,26 @@ async function main() {
     assert.ok(!(tercatat[1].body.generationConfig as Record<string, unknown>).responseSchema);
   });
 
+  await uji("thinking dimatikan; kalau ditolak → ulang tanpa thinkingConfig", async () => {
+    antrean = [
+      () => ({ status: 400, body: { error: { message: "Thinking budget is not supported" } } }),
+      () => ok({ t: 1 }),
+    ];
+    await panggilGeminiJson(7, "x");
+    const gc = (i: number) => tercatat[i].body.generationConfig as Record<string, unknown>;
+    assert.deepEqual(gc(0).thinkingConfig, { thinkingBudget: 0 });
+    assert.equal(gc(1).thinkingConfig, undefined);
+    assert.equal(tercatat[0].kunci, tercatat[1].kunci);
+  });
+
+  await uji("503 (model penuh) → kunci berikutnya memakai model cadangan", async () => {
+    antrean = [() => ({ status: 503, body: { error: { message: "overloaded" } } }), () => ok({ e: 1 })];
+    await panggilGeminiJson(7, "x");
+    assert.ok(tercatat[0].url.includes("gemini-flash-latest"));
+    assert.ok(tercatat[1].url.includes("gemini-flash-lite-latest"));
+    assert.notEqual(tercatat[0].kunci, tercatat[1].kunci);
+  });
+
   await uji("JSON dibungkus ```json``` tetap terbaca", async () => {
     antrean = [
       () => ({

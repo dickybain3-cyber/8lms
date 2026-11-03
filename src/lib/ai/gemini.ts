@@ -43,7 +43,18 @@ const MODEL_CADANGAN =
 
 const ISTIRAHAT_429_MS = 65_000;
 const ISTIRAHAT_DITOLAK_MS = 30 * 60_000;
-const BATAS_WAKTU_MS = 50_000;
+/** Batas satu percobaan. 35 detik supaya masih ada waktu untuk satu
+ *  percobaan lagi (model cadangan) dalam anggaran total di bawah. */
+const BATAS_WAKTU_MS = 35_000;
+/**
+ * Anggaran waktu SATU panggilan `panggilGeminiJson` (semua kunci digabung).
+ * Route AI punya `maxDuration = 60` di Vercel; kalau lewat, Vercel memutus
+ * fungsi dan browser hanya menerima 504 tanpa pesan. Dulu tiap kunci boleh
+ * 50 detik, jadi percobaan kunci kedua pasti melewati batas itu.
+ */
+const BATAS_TOTAL_MS = 54_000;
+/** Jangan memulai percobaan baru kalau sisa waktunya kurang dari ini. */
+const SISA_MINIMAL_MS = 10_000;
 
 export class GalatAi extends Error {
   constructor(
@@ -123,10 +134,12 @@ async function satuPanggilan(
   kunci: string,
   prompt: PromptGemini,
   opsi: OpsiPanggilan,
-  pakaiSkema: boolean
+  pakaiSkema: boolean,
+  tanpaThinking: boolean,
+  batasMs: number
 ): Promise<{ status: number; body: ResponsGemini | null }> {
   const pengendali = new AbortController();
-  const timer = setTimeout(() => pengendali.abort(), BATAS_WAKTU_MS);
+  const timer = setTimeout(() => pengendali.abort(), Math.min(BATAS_WAKTU_MS, batasMs));
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
@@ -149,6 +162,10 @@ async function satuPanggilan(
             temperature: opsi.suhu ?? 0.8,
             responseMimeType: "application/json",
             ...(pakaiSkema && opsi.skema ? { responseSchema: opsi.skema } : {}),
+            // Model Flash terbaru "berpikir" dulu sebelum menjawab — untuk
+            // menyusun soal itu hanya menambah 10-30 detik. Dimatikan; kalau
+            // model menolak (400 menyebut "thinking"), diulang tanpa ini.
+            ...(tanpaThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
           },
         }),
         signal: pengendali.signal,
@@ -186,13 +203,20 @@ export async function panggilGeminiJson<T = unknown>(
 
   let model = MODEL_UTAMA;
   let pakaiSkema = true;
+  let tanpaThinking = true;
   let alasanTerakhir = "";
+  const mulai = Date.now();
 
   // Setiap kunci paling banyak dicoba sekali per panggilan; perubahan
   // model/skema mengulang kunci yang sama tanpa dihitung.
   for (let i = 0; i < daftar.length; i++) {
+    const sisa = BATAS_TOTAL_MS - (Date.now() - mulai);
+    if (sisa < SISA_MINIMAL_MS) {
+      alasanTerakhir = alasanTerakhir || "batas waktu";
+      break;
+    }
     const kunci = daftar[i];
-    const { status, body } = await satuPanggilan(model, kunci, prompt, opsi, pakaiSkema);
+    const { status, body } = await satuPanggilan(model, kunci, prompt, opsi, pakaiSkema, tanpaThinking, sisa);
 
     if (status === 200 && body) {
       if (body.promptFeedback?.blockReason) {
@@ -241,6 +265,11 @@ export async function panggilGeminiJson<T = unknown>(
       i--; // ulangi kunci yang sama dengan model cadangan
       continue;
     }
+    if (status === 400 && tanpaThinking && /thinking/i.test(body?.error?.message ?? "")) {
+      tanpaThinking = false;
+      i--;
+      continue;
+    }
     if (status === 400 && pakaiSkema && /schema/i.test(body?.error?.message ?? "")) {
       // Model tertentu menolak sebagian fitur responseSchema. Prompt
       // sudah menjelaskan bentuk JSON-nya, jadi cukup minta JSON biasa.
@@ -255,7 +284,15 @@ export async function panggilGeminiJson<T = unknown>(
       );
     }
     // 5xx / jaringan / batas waktu -> coba kunci berikutnya.
+    //
+    // 503 dari Google = MODELNYA sedang penuh (overloaded), bukan kuncinya;
+    // kunci lain di model yang sama biasanya ikut ditolak. Jadi pindah ke
+    // model cadangan (Flash-Lite: antrean lain, lebih cepat). Lambat sampai
+    // batas waktu juga pindah ke cadangan supaya sisa waktu cukup.
     alasanTerakhir = status === 504 ? "batas waktu" : `server AI sibuk (${status})`;
+    if ((status === 503 || status === 500 || status === 504) && model !== MODEL_CADANGAN) {
+      model = MODEL_CADANGAN;
+    }
   }
 
   throw new GalatAi(
