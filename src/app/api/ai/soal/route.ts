@@ -77,6 +77,7 @@ export async function POST(req: Request) {
     jenjang: akses.jenjang,
     topik: rencana.topik,
     kesulitan: rencana.kesulitan,
+    persenKesulitan: rencana.persenKesulitan,
     jumlahOpsi: rencana.jumlahOpsi,
     catatan: rencana.catatan,
     pemandu: rencana.pemandu,

@@ -23,7 +23,9 @@ Dua pintu, satu komponen (`GeneratorSoalAi`):
    (tujuan pembelajaran, untuk asesmen apa, level kognitif C1–C6, pakai
    stimulus AKM); **contoh soal** (unggah .docx/.pdf/.xlsx/.txt/foto →
    `/api/ai/ekstrak` mengubahnya jadi teks, bisa dirapikan); detail
-   tambahan (gambar, kesulitan, 4/5 opsi, total skor, detail lain).
+   tambahan (gambar, kesulitan LOTS/MOTS/HOTS atau Campuran dengan persentase
+   yang diatur guru — jumlah per batch dihitung di kode, 4/5 opsi, total skor,
+   detail lain). Maks **50 soal** sekali generate.
 2. **Proses**: memakai **1 kuota harian** → tiket → pesanan dipecah per
    bentuk soal (maks 5–15 butir per panggilan).
 3. **Hasil**: **Preview soal** (kuis, `SoalViewer` siswa + tombol Periksa)

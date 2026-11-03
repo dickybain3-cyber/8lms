@@ -13,6 +13,7 @@ import {
   MAKS_SOAL_SEKALI,
   MAKS_TOPIK,
   PERSEN_GAMBAR_OTOMATIS,
+  PERSEN_KESULITAN_BAWAAN,
   TIPE_BISA_GAMBAR,
   alokasiGambar,
   bagiSkor,
@@ -29,6 +30,7 @@ import {
   type JumlahPerTipe,
   type Kesulitan,
   type PemanduSoal,
+  type PersenKesulitan,
   type RencanaGenerate,
 } from "@/lib/ai/rencana-soal";
 import {
@@ -198,6 +200,9 @@ export default function GeneratorSoalAi({
   const [membacaContoh, setMembacaContoh] = useState(false);
   const [bergambar, setBergambar] = useState("");
   const [kesulitan, setKesulitan] = useState<Kesulitan>("campuran");
+  const [persenKesulitan, setPersenKesulitan] = useState<PersenKesulitan>(PERSEN_KESULITAN_BAWAAN);
+  const totalPersen = persenKesulitan.mudah + persenKesulitan.sedang + persenKesulitan.sulit;
+  const persenTidakPas = kesulitan === "campuran" && totalPersen !== 100;
   const [jumlahOpsi, setJumlahOpsi] = useState<4 | 5>(4);
   const [totalSkor, setTotalSkor] = useState("100");
   const [catatan, setCatatan] = useState("");
@@ -295,11 +300,13 @@ export default function GeneratorSoalAi({
     if (semuaTopik.length === 0) return "Isi minimal satu topik/materi.";
     if (total === 0) return "Isi jumlah soal minimal pada satu bentuk soal.";
     if (total > MAKS_SOAL_SEKALI) return `Maksimal ${MAKS_SOAL_SEKALI} soal sekali generate.`;
+    if (persenTidakPas) return `Persentase LOTS + MOTS + HOTS harus 100% (sekarang ${totalPersen}%).`;
     return {
       topik: semuaTopik.slice(0, MAKS_TOPIK),
       jumlah,
       jumlahBergambar: bergambar.trim() === "" ? null : Math.max(0, Number(bergambar) || 0),
       kesulitan,
+      persenKesulitan,
       jumlahOpsi,
       catatan,
       totalSkor: targetSkor,
@@ -1049,6 +1056,48 @@ export default function GeneratorSoalAi({
                       </option>
                     ))}
                   </select>
+                  {kesulitan === "campuran" && (
+                    <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="grid grid-cols-3 gap-2">
+                        {(
+                          [
+                            ["mudah", "LOTS", "text-emerald-700"],
+                            ["sedang", "MOTS", "text-amber-700"],
+                            ["sulit", "HOTS", "text-rose-700"],
+                          ] as const
+                        ).map(([k, label, warna]) => (
+                          <label key={k} className="block text-center">
+                            <span className={`block text-[0.7rem] font-bold ${warna}`}>{label}</span>
+                            <span className="mt-1 flex items-center justify-center gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={5}
+                                inputMode="numeric"
+                                value={persenKesulitan[k]}
+                                onChange={(e) =>
+                                  setPersenKesulitan((p) => ({
+                                    ...p,
+                                    [k]: Math.max(0, Math.min(100, Math.floor(Number(e.target.value) || 0))),
+                                  }))
+                                }
+                                aria-label={`Persentase ${label}`}
+                                className="w-14 rounded-lg border border-slate-200 bg-white px-1 py-1.5 text-center text-sm font-bold tabular-nums text-ink outline-none focus:border-navy-600"
+                              />
+                              <span className="text-xs text-slate-500">%</span>
+                            </span>
+                            <span className="mt-0.5 block text-[0.68rem] text-slate-500">
+                              ±{Math.round((persenKesulitan[k] * total) / 100)} soal
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      <p className={`mt-2 text-center text-[0.72rem] font-semibold ${persenTidakPas ? "text-rose-600" : "text-emerald-700"}`}>
+                        Total {totalPersen}%{persenTidakPas ? " — harus 100%" : ""}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <span className="label-field">Opsi pilihan ganda</span>
@@ -1389,7 +1438,7 @@ export default function GeneratorSoalAi({
             <button
               type="button"
               onClick={mulai}
-              disabled={total === 0 || total > MAKS_SOAL_SEKALI || kuotaHabis}
+              disabled={total === 0 || total > MAKS_SOAL_SEKALI || kuotaHabis || persenTidakPas}
               className="btn-navy"
             >
               <i className="fas fa-wand-magic-sparkles" aria-hidden />

@@ -16,6 +16,9 @@ import {
   totalSoal,
   validasiRencana,
   MAKS_CONTOH,
+  MAKS_SOAL_SEKALI,
+  rapikanPersenKesulitan,
+  rincianKesulitan,
 } from "@/lib/ai/rencana-soal";
 import {
   drafButuhGambar,
@@ -117,6 +120,37 @@ uji("tanpa pemandu → prompt tidak menyebut contoh", () => {
     mapel: "Matematika", jenjang: 7, topik: r.topik, kesulitan: r.kesulitan, jumlahOpsi: 4, catatan: "", pemandu: r.pemandu, hindari: [],
   });
   assert.doesNotMatch(p, /contoh soal dari guru/);
+});
+
+console.log("kesulitan & batas");
+uji("batas sekali generate 50 soal", () => {
+  assert.equal(MAKS_SOAL_SEKALI, 50);
+  assert.equal(typeof validasiRencana({ topik: ["x"], jumlah: { pilgan_biasa: 50 } }), "object");
+  assert.equal(typeof validasiRencana({ topik: ["x"], jumlah: { pilgan_biasa: 30, benar_salah: 21 } }), "string");
+});
+uji("persen kesulitan dirapikan jadi pas 100", () => {
+  assert.deepEqual(rapikanPersenKesulitan({ mudah: 20, sedang: 50, sulit: 30 }), { mudah: 20, sedang: 50, sulit: 30 });
+  const r = rapikanPersenKesulitan({ mudah: 1, sedang: 1, sulit: 1 });
+  assert.equal(r.mudah + r.sedang + r.sulit, 100);
+  assert.deepEqual(rapikanPersenKesulitan(undefined), { mudah: 30, sedang: 50, sulit: 20 });
+  assert.deepEqual(rapikanPersenKesulitan({ mudah: -5, sedang: 500, sulit: "x" }), { mudah: 0, sedang: 100, sulit: 0 });
+});
+uji("rincian per batch jumlahnya pas", () => {
+  for (const n of [1, 3, 7, 10, 15]) {
+    const r = rincianKesulitan(n, { mudah: 30, sedang: 50, sulit: 20 });
+    assert.equal(r.mudah + r.sedang + r.sulit, n);
+  }
+  assert.deepEqual(rincianKesulitan(10, { mudah: 30, sedang: 50, sulit: 20 }), { mudah: 3, sedang: 5, sulit: 2 });
+});
+uji("prompt campuran menyebut jumlah LOTS/MOTS/HOTS", () => {
+  const r = validasiRencana({ topik: ["x"], jumlah: { pilgan_biasa: 10 }, kesulitan: "campuran", persenKesulitan: { mudah: 0, sedang: 40, sulit: 60 } });
+  assert.ok(typeof r !== "string");
+  const p = buatPromptBatch(pecahBatch(r)[0], {
+    mapel: "IPA", jenjang: 8, topik: r.topik, kesulitan: r.kesulitan, persenKesulitan: r.persenKesulitan, jumlahOpsi: 4, catatan: "", hindari: [],
+  });
+  assert.match(p, /4 soal MOTS/);
+  assert.match(p, /6 soal HOTS/);
+  assert.doesNotMatch(p, /LOTS/);
 });
 
 console.log("draf, preview kuis, dokumen");

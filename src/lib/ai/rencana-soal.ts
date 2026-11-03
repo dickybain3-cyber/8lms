@@ -39,16 +39,62 @@ export type Kesulitan = "mudah" | "sedang" | "sulit" | "campuran";
 export type JenisGambar = "diagram" | "ilustrasi";
 
 export const KESULITAN_LABEL: Record<Kesulitan, string> = {
-  mudah: "Mudah (LOTS)",
-  sedang: "Sedang (MOTS)",
-  sulit: "Sulit (HOTS)",
-  campuran: "Campuran (30% mudah, 50% sedang, 20% sulit)",
+  mudah: "LOTS — mudah",
+  sedang: "MOTS — sedang",
+  sulit: "HOTS — sulit",
+  campuran: "Campuran (atur persentasenya)",
 };
+
+/** Persentase LOTS/MOTS/HOTS untuk kesulitan "campuran". Totalnya 100. */
+export interface PersenKesulitan {
+  mudah: number;
+  sedang: number;
+  sulit: number;
+}
+
+export const PERSEN_KESULITAN_BAWAAN: PersenKesulitan = { mudah: 30, sedang: 50, sulit: 20 };
+
+/**
+ * Rapikan persentase dari browser: bilangan bulat 0–100. Kalau totalnya
+ * bukan 100, diskalakan ulang (sisa terbesar) supaya pas 100; kalau semua
+ * nol, kembali ke bawaan 30/50/20.
+ */
+export function rapikanPersenKesulitan(raw: unknown): PersenKesulitan {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const angka = (["mudah", "sedang", "sulit"] as const).map((k) => {
+    const n = Math.floor(Number(r[k]));
+    return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+  });
+  const jumlah = angka.reduce((a, b) => a + b, 0);
+  if (jumlah === 0) return { ...PERSEN_KESULITAN_BAWAAN };
+  const [mudah, sedang, sulit] = jumlah === 100 ? angka : bagiSisaTerbesar(angka, 100);
+  return { mudah, sedang, sulit };
+}
+
+/** Bagi `total` sebanding `bobot` jadi bilangan bulat yang jumlahnya pas. */
+function bagiSisaTerbesar(bobot: number[], total: number): number[] {
+  const jumlah = bobot.reduce((a, b) => a + b, 0);
+  if (jumlah <= 0 || total <= 0) return bobot.map(() => 0);
+  const ideal = bobot.map((b) => (b * total) / jumlah);
+  const hasil = ideal.map(Math.floor);
+  let sisa = total - hasil.reduce((a, b) => a + b, 0);
+  const urut = ideal
+    .map((x, i) => ({ i, pecahan: x - Math.floor(x) }))
+    .sort((a, b) => b.pecahan - a.pecahan || a.i - b.i);
+  for (let k = 0; sisa > 0; k++, sisa--) hasil[urut[k % urut.length].i] += 1;
+  return hasil;
+}
+
+/** Berapa soal LOTS/MOTS/HOTS di satu batch berisi `n` soal. */
+export function rincianKesulitan(n: number, persen: PersenKesulitan): PersenKesulitan {
+  const [mudah, sedang, sulit] = bagiSisaTerbesar([persen.mudah, persen.sedang, persen.sulit], n);
+  return { mudah, sedang, sulit };
+}
 
 /** Batas wajar satu kali generate. Lebih dari ini, guru lebih baik
  *  generate dua kali — tinjauan 100 soal sekaligus melelahkan dan
  *  kesalahan AI mudah terlewat. */
-export const MAKS_SOAL_SEKALI = 60;
+export const MAKS_SOAL_SEKALI = 50;
 export const MAKS_TOPIK = 8;
 
 /**
@@ -134,6 +180,8 @@ export interface RencanaGenerate {
   /** null = otomatis (AI memilih, maksimal ±20% soal). */
   jumlahBergambar: number | null;
   kesulitan: Kesulitan;
+  /** Dipakai hanya bila `kesulitan === "campuran"`. Kosong = 30/50/20. */
+  persenKesulitan?: PersenKesulitan;
   jumlahOpsi: 4 | 5;
   catatan: string;
   totalSkor: number;
@@ -387,6 +435,7 @@ export interface KonteksPrompt {
   jenjang: 7 | 8 | 9;
   topik: string[];
   kesulitan: Kesulitan;
+  persenKesulitan?: PersenKesulitan;
   jumlahOpsi: 4 | 5;
   catatan: string;
   pemandu?: PemanduSoal;
@@ -429,7 +478,19 @@ export function buatPromptBatch(batch: BatchGenerate, k: KonteksPrompt): string 
       .map((t) => `"${t}"`)
       .join(", ")}.`
   );
-  baris.push(`Tingkat kesulitan: ${KESULITAN_LABEL[k.kesulitan]}.`);
+  if (k.kesulitan === "campuran") {
+    // Jumlahnya dihitung di kode per batch, bukan diserahkan ke AI dalam
+    // bentuk persen — AI sering meleset kalau disuruh menghitung sendiri.
+    const r = rincianKesulitan(batch.jumlah, k.persenKesulitan ?? PERSEN_KESULITAN_BAWAAN);
+    const bagian = [
+      r.mudah ? `${r.mudah} soal LOTS (mudah: mengingat/memahami, C1-C2)` : "",
+      r.sedang ? `${r.sedang} soal MOTS (sedang: menerapkan, C3)` : "",
+      r.sulit ? `${r.sulit} soal HOTS (sulit: menganalisis/mengevaluasi/mencipta, C4-C6, pakai konteks/kasus)` : "",
+    ].filter(Boolean);
+    baris.push(`Tingkat kesulitan dari ${batch.jumlah} soal ini: ${bagian.join(", ")}.`);
+  } else {
+    baris.push(`Tingkat kesulitan: semua soal ${KESULITAN_LABEL[k.kesulitan]}.`);
+  }
   baris.push(ATURAN_BENTUK[batch.tipe](k));
 
   if (batch.jumlahBergambar > 0) {
@@ -939,6 +1000,7 @@ export function validasiRencana(raw: unknown): RencanaGenerate | string {
     jumlah,
     jumlahBergambar,
     kesulitan,
+    persenKesulitan: rapikanPersenKesulitan(r.persenKesulitan),
     jumlahOpsi: Number(r.jumlahOpsi) === 5 ? 5 : 4,
     catatan: rapikanTeks(r.catatan, 600),
     totalSkor: Number.isFinite(totalSkor) && totalSkor > 0 ? Math.min(totalSkor, 1000) : 100,
