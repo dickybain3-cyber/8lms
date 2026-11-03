@@ -33,8 +33,11 @@ import {
   type PersenKesulitan,
   type RencanaGenerate,
 } from "@/lib/ai/rencana-soal";
+import { JENIS_STIMULUS } from "@/lib/ai/stimulus";
 import {
+  STATUS_KOSONG,
   drafButuhGambar,
+  drafButuhStimulus,
   htmlDokumenSoal,
   kontenFinalDraf,
   namaBerkas,
@@ -45,8 +48,11 @@ import {
   GalatBatasGambar,
   buatDiagram,
   buatIlustrasi,
+  pakaiFoto,
   postJson,
+  renderStimulus,
   unggahBerkasGuru,
+  type KandidatFoto,
 } from "@/lib/ai/gambar-klien";
 import {
   createSoal,
@@ -139,7 +145,8 @@ function keTinjau(d: DraftSoal): DrafTinjau {
   return {
     ...d,
     dipakai: true,
-    gambarStatus: { url: null, proses: null, galat: null },
+    gambarStatus: { ...STATUS_KOSONG },
+    stimulusStatus: { ...STATUS_KOSONG },
     galatSimpan: null,
   };
 }
@@ -233,6 +240,9 @@ export default function GeneratorSoalAi({
   const drafRef = useRef<DrafTinjau[]>([]);
   drafRef.current = draf;
   const fileContohRef = useRef<HTMLInputElement>(null);
+  const [tautanBacaan, setTautanBacaan] = useState("");
+  const [membacaTautan, setMembacaTautan] = useState(false);
+  const [infoBacaan, setInfoBacaan] = useState<string | null>(null);
 
   const total = totalSoal(jumlah);
   const targetSkor = Number(totalSkor) > 0 ? Number(totalSkor) : 100;
@@ -362,7 +372,20 @@ export default function GeneratorSoalAi({
     if (hasil.length > 0) {
       setTampilHasil(null);
       setFase("hasil");
+      // Stimulus tabel/grafik/infografis langsung digambar supaya Preview
+      // & Lihat draf sudah lengkap. Tanpa AI, tidak memakai kuota.
+      await renderSemuaStimulus();
     }
+  }
+
+  async function renderSemuaStimulus() {
+    const antre = drafRef.current.filter(drafButuhStimulus);
+    for (let i = 0; i < antre.length; i++) {
+      if (batal.current) break;
+      setInfoMassal(`Menggambar stimulus ${i + 1}/${antre.length}…`);
+      await renderStimulusDraf(antre[i].idLokal);
+    }
+    setInfoMassal(null);
   }
 
   async function mulai() {
@@ -403,6 +426,34 @@ export default function GeneratorSoalAi({
     muatKuota();
   }
 
+  async function ambilBacaan() {
+    const url = tautanBacaan.trim();
+    if (!url) return;
+    setMembacaTautan(true);
+    setInfoBacaan(null);
+    try {
+      const fd = new FormData();
+      fd.set("url", url);
+      if (jenjang) fd.set("jenjang", String(jenjang));
+      const res = await fetch("/api/ai/ekstrak", { method: "POST", body: fd });
+      const body = (await res.json().catch(() => null)) as
+        | { teks?: string; terpotong?: boolean; judul?: string; sumber?: string; error?: string }
+        | null;
+      if (!res.ok || !body?.teks) throw new Error(body?.error ?? "Gagal mengambil artikel.");
+      setPemandu((p) => ({
+        ...p,
+        bacaan: (p.bacaan ? `${p.bacaan}\n\n` : "") + body.teks,
+        sumberBacaan: p.sumberBacaan || body.sumber || url,
+      }));
+      setInfoBacaan(`${body.judul || "Artikel"} terambil${body.terpotong ? " (dipotong)" : ""}. Periksa isinya di bawah.`);
+      setTautanBacaan("");
+    } catch (e) {
+      setInfoBacaan((e as Error).message);
+    } finally {
+      setMembacaTautan(false);
+    }
+  }
+
   async function unggahContoh(file: File) {
     setMembacaContoh(true);
     setInfoContoh(null);
@@ -425,15 +476,16 @@ export default function GeneratorSoalAi({
 
   async function prosesGambar(
     id: string,
-    jenis: "diagram" | "ilustrasi" | "unggah",
-    kerja: (d: DrafTinjau) => Promise<{ url: string; jedaDetik?: number }>
+    jenis: "diagram" | "ilustrasi" | "unggah" | "foto",
+    kerja: (d: DrafTinjau) => Promise<{ url: string; jedaDetik?: number }>,
+    kredit: string | null = null
   ): Promise<{ ok: boolean; jedaDetik?: number; galat?: unknown }> {
     const d = drafRef.current.find((x) => x.idLokal === id);
     if (!d) return { ok: false };
     ubahDraf(id, (x) => ({ ...x, gambarStatus: { ...x.gambarStatus, proses: jenis, galat: null } }));
     try {
       const { url, jedaDetik } = await kerja(d);
-      ubahDraf(id, (x) => ({ ...x, gambarStatus: { url, proses: null, galat: null } }));
+      ubahDraf(id, (x) => ({ ...x, gambarStatus: { url, proses: null, galat: null, kredit } }));
       return { ok: true, jedaDetik };
     } catch (e) {
       ubahDraf(id, (x) => ({ ...x, gambarStatus: { ...x.gambarStatus, proses: null, galat: (e as Error).message } }));
@@ -448,6 +500,26 @@ export default function GeneratorSoalAi({
       await new Promise((r) => setTimeout(r, 1000));
     }
     setInfoMassal(null);
+  }
+
+  function pilihFoto(id: string, k: KandidatFoto) {
+    return prosesGambar(id, "foto", () => pakaiFoto(k), k.kredit);
+  }
+
+  /** Render stimulus tabel/grafik/infografis (tanpa AI, tanpa jeda). */
+  async function renderStimulusDraf(id: string): Promise<boolean> {
+    const d = drafRef.current.find((x) => x.idLokal === id);
+    if (!d?.stimulus) return false;
+    const st = (x: DrafTinjau) => x.stimulusStatus ?? STATUS_KOSONG;
+    ubahDraf(id, (x) => ({ ...x, stimulusStatus: { ...st(x), proses: "stimulus", galat: null } }));
+    try {
+      const { url } = await renderStimulus({ jenjang, stimulus: d.stimulus });
+      ubahDraf(id, (x) => ({ ...x, stimulusStatus: { ...STATUS_KOSONG, url } }));
+      return true;
+    } catch (e) {
+      ubahDraf(id, (x) => ({ ...x, stimulusStatus: { ...st(x), proses: null, galat: (e as Error).message } }));
+      return false;
+    }
   }
 
   function buatGambar(id: string, jenis: "diagram" | "ilustrasi") {
@@ -470,8 +542,10 @@ export default function GeneratorSoalAi({
   async function buatSemuaGambar() {
     setGambarMassal(true);
     batal.current = false;
+    // Stimulus dulu: dirender server tanpa AI, cepat, tanpa batas jeda.
+    await renderSemuaStimulus();
     const antre = drafRef.current
-      .filter(drafButuhGambar)
+      .filter((d) => !!d.gambar && !d.gambarStatus.url && !d.diedit)
       .sort((a, b) => (a.gambar!.jenis === "diagram" ? 0 : 1) - (b.gambar!.jenis === "diagram" ? 0 : 1));
 
     for (let i = 0; i < antre.length; i++) {
@@ -494,7 +568,7 @@ export default function GeneratorSoalAi({
 
   function tanpaGambarSemua() {
     setDraf((lama) =>
-      lama.map((d) => (drafButuhGambar(d) ? { ...d, gambar: null, gambarStatus: { url: null, proses: null, galat: null } } : d))
+      lama.map((d) => (d.gambar && !d.gambarStatus.url && !d.diedit ? { ...d, gambar: null, gambarStatus: { ...STATUS_KOSONG } } : d))
     );
   }
 
@@ -930,21 +1004,34 @@ export default function GeneratorSoalAi({
                     ))}
                   </select>
                 </div>
-                <div>
-                  <span className="label-field">Pakai stimulus (bacaan/kasus/data) ala AKM?</span>
-                  <div className="flex gap-2">
-                    {[false, true].map((v) => (
-                      <button
-                        key={String(v)}
-                        type="button"
-                        onClick={() => setPemandu((p) => ({ ...p, stimulus: v }))}
-                        className={`flex-1 rounded-xl border-2 px-3 py-2.5 text-sm font-semibold ${
-                          pemandu.stimulus === v ? "border-navy-700 bg-navy-50 text-navy-800" : "border-slate-200 bg-white text-slate-500"
-                        }`}
-                      >
-                        {v ? "Ya, sebagian" : "Tidak"}
-                      </button>
-                    ))}
+                <div className="sm:col-span-2">
+                  <span className="label-field">Bentuk stimulus TKA yang dipakai</span>
+                  <p className="mb-2 text-[0.72rem] text-slate-500">
+                    Semua soal dibuat setara TKA: selalu diawali stimulus. Tabel, grafik, dan infografis
+                    digambar otomatis dari datanya (angka pasti cocok dengan kunci, tanpa kuota AI tambahan).
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {JENIS_STIMULUS.map((j) => {
+                      const aktif = pemandu.jenisStimulus.includes(j.jenis);
+                      return (
+                        <button
+                          key={j.jenis}
+                          type="button"
+                          onClick={() =>
+                            setPemandu((p) => {
+                              const baru = aktif ? p.jenisStimulus.filter((x) => x !== j.jenis) : [...p.jenisStimulus, j.jenis];
+                              return { ...p, jenisStimulus: baru.length ? baru : p.jenisStimulus };
+                            })
+                          }
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                            aktif ? "border-navy-700 bg-navy-700 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                          }`}
+                        >
+                          <i className={`fas ${j.ikon}`} aria-hidden />
+                          {j.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="sm:col-span-2">
@@ -975,12 +1062,66 @@ export default function GeneratorSoalAi({
               </div>
             </Bagian>
 
-            {/* 4. Contoh soal */}
+            {/* 4. Contoh soal & bahan bacaan */}
             <Bagian
               nomor={4}
-              judul="Contoh soal (opsional)"
-              ket="Unggah soal tahun lalu/kisi-kisi supaya gaya & tingkatnya mirip. AI membuat soal BARU, tidak menyalin."
+              judul="Contoh soal & bahan bacaan (opsional)"
+              ket="Contoh soal = acuan gaya & tingkat (AI membuat soal BARU). Bahan bacaan = artikel/berita yang dijadikan stimulus."
             >
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <label className="label-field" htmlFor="ai-tautan">
+                  Ambil bahan bacaan dari tautan (berita, artikel, Wikipedia)
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="ai-tautan"
+                    type="url"
+                    inputMode="url"
+                    value={tautanBacaan}
+                    onChange={(e) => setTautanBacaan(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        ambilBacaan();
+                      }
+                    }}
+                    placeholder="https://…"
+                    className="field"
+                  />
+                  <button
+                    type="button"
+                    onClick={ambilBacaan}
+                    disabled={membacaTautan || !tautanBacaan.trim()}
+                    className="btn-navy-outline shrink-0"
+                  >
+                    <i className={`fas ${membacaTautan ? "fa-circle-notch fa-spin" : "fa-globe"}`} aria-hidden />
+                    {membacaTautan ? "Mengambil…" : "Ambil artikel"}
+                  </button>
+                </div>
+                {infoBacaan && <p className="mt-2 text-xs font-medium text-navy-700">{infoBacaan}</p>}
+                {(pemandu.bacaan || pemandu.sumberBacaan) && (
+                  <>
+                    <textarea
+                      rows={5}
+                      maxLength={MAKS_CONTOH}
+                      value={pemandu.bacaan}
+                      onChange={(e) => setPemandu((p) => ({ ...p, bacaan: e.target.value }))}
+                      className="field mt-2 text-xs"
+                    />
+                    <input
+                      value={pemandu.sumberBacaan}
+                      maxLength={300}
+                      onChange={(e) => setPemandu((p) => ({ ...p, sumberBacaan: e.target.value }))}
+                      placeholder="Sumber (ditulis di bawah stimulus)"
+                      className="field mt-2 text-xs"
+                    />
+                    <p className="mt-1 text-[0.7rem] text-slate-500">
+                      AI meringkas & memparafrasakan bacaan ini, lalu mencantumkan sumbernya. Pastikan isinya
+                      pantas untuk siswa.
+                    </p>
+                  </>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -1190,8 +1331,14 @@ export default function GeneratorSoalAi({
                   .map((t) => `${TIPE_LABEL[t]} ${draf.filter((d) => d.tipe === t).length}`)
                   .join(" · ")}{" "}
                 · total skor {formatAngka(skorTotalDraf)}
-                {belumBergambar.length > 0 && ` · ${belumBergambar.length} soal butuh gambar (siapkan di langkah Edit)`}
+                {belumBergambar.length > 0 && ` · ${belumBergambar.length} soal butuh gambar/stimulus (siapkan di langkah Edit)`}
               </p>
+              {infoMassal && (
+                <p className="mt-1 text-xs font-semibold text-emerald-900">
+                  <i className="fas fa-circle-notch fa-spin mr-1.5" aria-hidden />
+                  {infoMassal}
+                </p>
+              )}
             </div>
             {batchStatus.some((b) => b.status === "gagal") && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -1272,7 +1419,10 @@ export default function GeneratorSoalAi({
                       setDraf((lama) => lama.filter((x) => x.idLokal !== d.idLokal));
                     }
                   }}
+                  jenjang={jenjang}
                   onBuatGambar={(jenis) => buatGambar(d.idLokal, jenis)}
+                  onPilihFoto={(k) => pilihFoto(d.idLokal, k)}
+                  onRenderStimulus={() => renderStimulusDraf(d.idLokal)}
                   onUnggahGambar={(f) => prosesGambar(d.idLokal, "unggah", () => unggahBerkasGuru(f))}
                   onGantiSoal={() => gantiSoal(d.idLokal)}
                 />

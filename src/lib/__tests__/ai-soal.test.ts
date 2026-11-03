@@ -104,9 +104,9 @@ uji("batch tidak melebihi batas dan isinya utuh", () => {
   assert.equal(b.reduce((n, x) => n + x.skor.reduce((a, c) => a + c, 0), 0), 100);
   assert.equal(b.reduce((n, x) => n + x.jumlahBergambar, 0), 5);
 });
-uji("batch dibagi rata (23 → 8,8,7)", () => {
+uji("batch dibagi rata (23 → 6,6,6,5)", () => {
   const pg = pecahBatch(rencanaContoh).filter((x) => x.tipe === "pilgan_biasa");
-  assert.deepEqual(pg.map((x) => x.jumlah), [8, 8, 7]);
+  assert.deepEqual(pg.map((x) => x.jumlah), [6, 6, 6, 5]);
 });
 
 console.log("normalisasiItem");

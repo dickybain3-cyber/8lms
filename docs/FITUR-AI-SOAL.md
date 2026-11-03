@@ -39,6 +39,32 @@ Dua pintu, satu komponen (`GeneratorSoalAi`):
    `createSoal` yang sama dengan form manual. Kalau paket sudah disimpan ke
    bank di langkah 5, salinan otomatis ke bank dilewati (`lewati_bank=1`).
 
+### Stimulus setara TKA
+
+Semua soal WAJIB diawali stimulus (tidak ada lagi pilihan "pakai stimulus").
+Guru memilih bentuk yang boleh dipakai: bacaan, tabel, grafik, infografis,
+gambar/foto. AI hanya menulis DATA-nya; gambarnya digambar kode di server
+(`/api/ai/stimulus`, tanpa panggilan AI, tanpa kuota), jadi angka di grafik
+pasti sama dengan kunci jawaban:
+
+| Bentuk | Pustaka (lisensi) |
+|---|---|
+| Tabel | SVG buatan sendiri (`svgTabel`) |
+| Grafik batang/garis/lingkaran | Vega-Lite + Vega (BSD-3) |
+| Infografis proses/siklus/perbandingan/daftar/piramida | AntV Infographic (MIT), teks foreignObject diubah jadi `<text>` |
+| Foto asli | Wikimedia Commons API (CC0/PD/CC BY/BY-SA, kredit otomatis) |
+| Ilustrasi / diagram | Pollinations / Gemini SVG (seperti sebelumnya) |
+| Bahan bacaan dari tautan | Mozilla Readability (Apache-2.0) + linkedom (ISC) |
+
+Stimulus langsung digambar setelah generate. Di langkah Edit, data stimulus
+bisa diubah per baris (tabel: `sel | sel`, grafik: `label | nilai | seri`)
+lalu "Gambar ulang". Hasil SVG → PNG → Cloudinary, sama seperti diagram.
+Tautan bacaan diambil server dengan pengaman SSRF (hanya http/https publik,
+alamat IP privat/lokal ditolak, maks 3 MB, 15 detik).
+
+Batch diperkecil (PG 6/panggilan) karena keluaran per soal lebih panjang:
+50 PG ≈ 9 panggilan Gemini.
+
 ### Pustaka konversi dokumen
 
 - **mammoth** (npm) untuk .docx → teks; **exceljs** (sudah ada) untuk .xlsx.

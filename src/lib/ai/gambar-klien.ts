@@ -34,15 +34,20 @@ export { postJson };
 /** Render SVG ke PNG. Dimuat sebagai <img> (skrip di SVG tidak jalan). */
 export async function svgKeFilePng(svg: string, nama = "diagram"): Promise<File> {
   const vb = /viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(svg);
-  const lebarAsli = vb ? Number(vb[1]) : 800;
-  const tinggiAsli = vb ? Number(vb[2]) : 560;
+  // Tanpa viewBox (mis. keluaran Vega/AntV): pakai atribut width/height.
+  const tag = /<svg\b[^>]*>/i.exec(svg)?.[0] ?? "";
+  const w = Number(/\swidth\s*=\s*["']?([\d.]+)/i.exec(tag)?.[1]);
+  const h = Number(/\sheight\s*=\s*["']?([\d.]+)/i.exec(tag)?.[1]);
+  const lebarAsli = vb ? Number(vb[1]) : w || 800;
+  const tinggiAsli = vb ? Number(vb[2]) : h || 560;
+  const svgBervb = vb || !w || !h ? svg : svg.replace(/<svg\b/i, `<svg viewBox="0 0 ${w} ${h}"`);
   const rasio = tinggiAsli > 0 && lebarAsli > 0 ? tinggiAsli / lebarAsli : 0.7;
   const lebar = LEBAR_PNG;
   const tinggi = Math.max(1, Math.round(LEBAR_PNG * rasio));
 
   // Pastikan ukuran eksplisit — tanpa width/height sebagian browser
   // merender SVG di 300×150.
-  const svgBerukuran = svg.replace(
+  const svgBerukuran = svgBervb.replace(
     /<svg\b([^>]*)>/i,
     (_m, atr: string) =>
       `<svg${atr.replace(/\s(width|height)\s*=\s*("[^"]*"|'[^']*')/gi, "")} width="${lebar}" height="${tinggi}">`
@@ -157,5 +162,41 @@ export async function buatIlustrasi(opsi: {
 
 export async function unggahBerkasGuru(file: File): Promise<{ url: string }> {
   const { url } = await prosesDanUnggah(file);
+  return { url };
+}
+
+/**
+ * Stimulus tabel/grafik/infografis → SVG (dirender server, tanpa AI) →
+ * PNG → Cloudinary. Lihat src/lib/ai/stimulus.ts.
+ */
+export async function renderStimulus(opsi: { jenjang?: number; stimulus: unknown }): Promise<{ url: string }> {
+  const { svg } = await postJson<{ svg: string }>("/api/ai/stimulus", opsi);
+  const file = await svgKeFilePng(svg, "stimulus");
+  const { url } = await prosesDanUnggah(file);
+  return { url };
+}
+
+export interface KandidatFoto {
+  thumb: string;
+  halaman: string;
+  judul: string;
+  kredit: string;
+}
+
+/** Cari foto asli berlisensi bebas di Wikimedia Commons. */
+export async function cariFoto(opsi: { jenjang?: number; q: string }): Promise<KandidatFoto[]> {
+  const { foto } = await postJson<{ foto: KandidatFoto[] }>("/api/ai/foto", opsi);
+  return foto;
+}
+
+/** Ambil foto pilihan dari upload.wikimedia.org (CORS terbuka) → Cloudinary. */
+export async function pakaiFoto(k: KandidatFoto): Promise<{ url: string }> {
+  if (!/^https:\/\/upload\.wikimedia\.org\//.test(k.thumb)) throw new Error("Alamat foto tidak dikenal.");
+  const res = await fetch(k.thumb, { cache: "no-store" });
+  const jenis = res.headers.get("content-type") ?? "";
+  if (!res.ok || !jenis.startsWith("image/")) throw new Error("Foto tidak bisa diambil. Coba foto lain.");
+  const blob = await res.blob();
+  const ext = jenis.includes("png") ? "png" : jenis.includes("webp") ? "webp" : "jpg";
+  const { url } = await prosesDanUnggah(new File([blob], `foto-${Date.now()}.${ext}`, { type: jenis }));
   return { url };
 }

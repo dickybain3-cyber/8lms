@@ -99,7 +99,8 @@ export async function POST(req: Request) {
         batch.tipe,
         item,
         batch.skor[draf.length] ?? batch.skor[batch.skor.length - 1] ?? 1,
-        rencana.jumlahOpsi
+        rencana.jumlahOpsi,
+        rencana.pemandu?.jenisStimulus
       );
       if (d) draf.push(d);
     }

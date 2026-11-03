@@ -33,6 +33,15 @@
 import type { TipeSoal } from "@/types";
 import { TIPE_LABEL, TIPE_SOAL_LIST } from "@/lib/soal";
 import { escapeAtribut, teksKeHtml } from "@/lib/html-soal";
+import {
+  SEMUA_JENIS_STIMULUS,
+  SKEMA_STIMULUS,
+  aturanStimulus,
+  htmlStimulus,
+  normalisasiStimulus,
+  type JenisStimulus,
+  type Stimulus,
+} from "@/lib/ai/stimulus";
 
 export type JumlahPerTipe = Record<TipeSoal, number>;
 export type Kesulitan = "mudah" | "sedang" | "sulit" | "campuran";
@@ -125,14 +134,16 @@ export const TIPE_BISA_GAMBAR: TipeSoal[] = [
 /** Persentase soal bergambar kalau guru tidak menentukan. */
 export const PERSEN_GAMBAR_OTOMATIS = 0.2;
 
-/** Ukuran batch maksimal per bentuk soal (butir per panggilan AI). */
+/** Ukuran batch maksimal per bentuk soal (butir per panggilan AI).
+ *  Lebih kecil sejak tiap soal wajib berstimulus ala TKA: keluaran per
+ *  soal jauh lebih panjang, dan batch besar mendekati batas waktu 50 detik. */
 export const BATAS_BATCH: Record<TipeSoal, number> = {
-  pilgan_biasa: 10,
-  pilgan_kompleks: 8,
-  uraian_singkat: 10,
-  benar_salah: 15,
-  multi_benar_salah: 6,
-  menjodohkan: 5,
+  pilgan_biasa: 6,
+  pilgan_kompleks: 5,
+  uraian_singkat: 6,
+  benar_salah: 8,
+  multi_benar_salah: 4,
+  menjodohkan: 4,
 };
 
 /** Jawaban "pertanyaan pemandu" guru — semuanya opsional. */
@@ -142,10 +153,13 @@ export interface PemanduSoal {
   jenisAsesmen: string;
   /** Kode level kognitif (C1–C6) yang diutamakan. */
   levelKognitif: string[];
-  /** true = sebagian soal memakai stimulus (bacaan/kasus/data) ala AKM. */
-  stimulus: boolean;
+  /** Bentuk stimulus TKA yang boleh dipakai AI (semua soal berstimulus). */
+  jenisStimulus: JenisStimulus[];
   /** Teks contoh soal dari guru (hasil ekstrak dokumen), sebagai acuan gaya. */
   contoh: string;
+  /** Bahan bacaan dari guru (mis. artikel berita dari tautan) untuk stimulus. */
+  bacaan: string;
+  sumberBacaan: string;
 }
 
 export const JENIS_ASESMEN = [
@@ -171,7 +185,15 @@ export const LEVEL_KOGNITIF: { kode: string; label: string }[] = [
 export const MAKS_CONTOH = 6000;
 
 export function pemanduKosong(): PemanduSoal {
-  return { tujuan: "", jenisAsesmen: "", levelKognitif: [], stimulus: false, contoh: "" };
+  return {
+    tujuan: "",
+    jenisAsesmen: "",
+    levelKognitif: [],
+    jenisStimulus: [...SEMUA_JENIS_STIMULUS],
+    contoh: "",
+    bacaan: "",
+    sumberBacaan: "",
+  };
 }
 
 export interface RencanaGenerate {
@@ -492,6 +514,7 @@ export function buatPromptBatch(batch: BatchGenerate, k: KonteksPrompt): string 
     baris.push(`Tingkat kesulitan: semua soal ${KESULITAN_LABEL[k.kesulitan]}.`);
   }
   baris.push(ATURAN_BENTUK[batch.tipe](k));
+  baris.push(aturanStimulus(k.pemandu?.jenisStimulus ?? SEMUA_JENIS_STIMULUS));
 
   if (batch.jumlahBergambar > 0) {
     baris.push(
@@ -527,9 +550,12 @@ export function buatPromptBatch(batch: BatchGenerate, k: KonteksPrompt): string 
         `Utamakan level kognitif ${p.levelKognitif.join(", ")} (taksonomi Bloom revisi). Sesuaikan kata kerja pertanyaan dengan level itu.`
       );
     }
-    if (p.stimulus) {
+    if (p.bacaan.trim()) {
       baris.push(
-        "Sekitar separuh soal memakai stimulus singkat (bacaan 2-4 kalimat, tabel data dalam teks, atau kasus sehari-hari) yang ditulis di awal pertanyaan, seperti soal AKM."
+        `Bahan bacaan dari guru${p.sumberBacaan ? ` (sumber: ${p.sumberBacaan})` : ""}. Jadikan bahan stimulus bacaan/tabel/grafik untuk sebagian soal: ringkas & parafrasakan dengan bahasa siswa SMP (jangan menyalin paragraf utuh), dan isi stimulus.sumber dengan sumber ini:
+"""
+${p.bacaan.trim().slice(0, MAKS_CONTOH)}
+"""`
       );
     }
     if (p.contoh.trim()) {
@@ -581,6 +607,7 @@ const SKEMA_GAMBAR: Skema = {
 const FIELD_UMUM: Record<string, Skema> = {
   topik: S_STR,
   pembahasan: S_STR,
+  stimulus: SKEMA_STIMULUS,
   gambar: SKEMA_GAMBAR,
 };
 
@@ -595,7 +622,7 @@ function skemaItem(tipe: TipeSoal): Skema {
           indeks_benar: S_INT,
           ...FIELD_UMUM,
         },
-        required: ["pertanyaan", "opsi", "indeks_benar", "topik", "pembahasan", "gambar"],
+        required: ["pertanyaan", "opsi", "indeks_benar", "topik", "pembahasan", "stimulus", "gambar"],
       };
     case "pilgan_kompleks":
       return {
@@ -606,7 +633,7 @@ function skemaItem(tipe: TipeSoal): Skema {
           indeks_benar: { type: "ARRAY", items: S_INT },
           ...FIELD_UMUM,
         },
-        required: ["pertanyaan", "opsi", "indeks_benar", "topik", "pembahasan", "gambar"],
+        required: ["pertanyaan", "opsi", "indeks_benar", "topik", "pembahasan", "stimulus", "gambar"],
       };
     case "uraian_singkat":
       return {
@@ -616,7 +643,7 @@ function skemaItem(tipe: TipeSoal): Skema {
           kunci_jawaban: { type: "ARRAY", items: S_STR },
           ...FIELD_UMUM,
         },
-        required: ["pertanyaan", "kunci_jawaban", "topik", "pembahasan", "gambar"],
+        required: ["pertanyaan", "kunci_jawaban", "topik", "pembahasan", "stimulus", "gambar"],
       };
     case "benar_salah":
       return {
@@ -626,7 +653,7 @@ function skemaItem(tipe: TipeSoal): Skema {
           jawaban_benar: S_BOOL,
           ...FIELD_UMUM,
         },
-        required: ["pertanyaan", "jawaban_benar", "topik", "pembahasan", "gambar"],
+        required: ["pertanyaan", "jawaban_benar", "topik", "pembahasan", "stimulus", "gambar"],
       };
     case "multi_benar_salah":
       return {
@@ -643,7 +670,7 @@ function skemaItem(tipe: TipeSoal): Skema {
           },
           ...FIELD_UMUM,
         },
-        required: ["instruksi", "pernyataan", "topik", "pembahasan", "gambar"],
+        required: ["instruksi", "pernyataan", "topik", "pembahasan", "stimulus", "gambar"],
       };
     case "menjodohkan":
       return {
@@ -661,8 +688,9 @@ function skemaItem(tipe: TipeSoal): Skema {
           pengecoh: { type: "ARRAY", items: S_STR },
           topik: S_STR,
           pembahasan: S_STR,
+          stimulus: SKEMA_STIMULUS,
         },
-        required: ["instruksi", "pasangan", "topik", "pembahasan"],
+        required: ["instruksi", "pasangan", "topik", "pembahasan", "stimulus"],
       };
   }
 }
@@ -699,6 +727,9 @@ export interface DraftSoal {
    *  jadi pembahasan yang tersimpan akan terkirim ke HP siswa. */
   pembahasan: string;
   gambar: PermintaanGambar | null;
+  /** Stimulus TKA (bacaan/tabel/grafik/infografis). Opsional: draf lama
+   *  di localStorage belum punya field ini. */
+  stimulus?: Stimulus | null;
 }
 
 let urutId = 0;
@@ -752,14 +783,16 @@ export function normalisasiItem(
   tipe: TipeSoal,
   raw: unknown,
   skor: number,
-  jumlahOpsi: 4 | 5
+  jumlahOpsi: 4 | 5,
+  jenisStimulus: JenisStimulus[] = SEMUA_JENIS_STIMULUS
 ): DraftSoal | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const topik = rapikanTeks(r.topik, 120);
   const pembahasan = rapikanTeks(r.pembahasan, 1000);
   const gambar = tipe === "menjodohkan" ? null : bacaGambar(r.gambar);
-  const dasar = { idLokal: idAcak("d"), tipe, skor, topik, pembahasan, gambar };
+  const stimulus = normalisasiStimulus(r.stimulus, jenisStimulus);
+  const dasar = { idLokal: idAcak("d"), tipe, skor, topik, pembahasan, gambar, stimulus };
 
   switch (tipe) {
     case "pilgan_biasa":
@@ -920,7 +953,8 @@ export function cuplikanDraft(d: DraftSoal): string {
  */
 export function kontenSiapSimpan(
   d: DraftSoal,
-  urlGambar: string | null
+  urlGambar: string | null,
+  ekstra: { urlStimulus?: string | null; kreditGambar?: string | null } = {}
 ): Record<string, unknown> {
   const konten = { ...d.konten };
   const fieldHtml = "pertanyaan_html" in konten ? "pertanyaan_html" : "instruksi_html";
@@ -929,12 +963,17 @@ export function kontenSiapSimpan(
   // Teks yang diedit guru di layar tinjauan disimpan di field polos;
   // HTML-nya selalu diturunkan ulang dari situ supaya keduanya sinkron.
   const htmlTeks = teksKeHtml(String(konten[fieldTeks] ?? ""));
-  konten[fieldHtml] =
+  // Urutan ala TKA: stimulus → gambar (+ kredit foto) → pertanyaan.
+  const htmlStim = d.stimulus ? htmlStimulus(d.stimulus, ekstra.urlStimulus ?? null) : "";
+  const htmlGambar =
     urlGambar && /^https:\/\//i.test(urlGambar)
       ? `<p style="text-align:center"><img src="${escapeAtribut(urlGambar)}" alt="${escapeAtribut(
           d.gambar?.deskripsi.slice(0, 150) ?? "Gambar soal"
-        )}" data-lebar="75" /></p><p>${htmlTeks}</p>`
-      : htmlTeks;
+        )}" data-lebar="75" /></p>${
+          ekstra.kreditGambar ? `<p style="text-align:center"><i>${teksKeHtml(ekstra.kreditGambar)}</i></p>` : ""
+        }`
+      : "";
+  konten[fieldHtml] = htmlStim || htmlGambar ? `${htmlStim}${htmlGambar}<p>${htmlTeks}</p>` : htmlTeks;
 
   for (const daftar of ["opsi", "pernyataan", "soal", "jawaban"] as const) {
     const arr = konten[daftar];
@@ -991,8 +1030,15 @@ export function validasiRencana(raw: unknown): RencanaGenerate | string {
     levelKognitif: Array.isArray(pRaw.levelKognitif)
       ? Array.from(new Set(pRaw.levelKognitif.map((x) => String(x)).filter((x) => kodeLevel.has(x))))
       : [],
-    stimulus: pRaw.stimulus === true,
+    jenisStimulus: (() => {
+      const daftar = Array.isArray(pRaw.jenisStimulus)
+        ? SEMUA_JENIS_STIMULUS.filter((j) => (pRaw.jenisStimulus as unknown[]).includes(j))
+        : [];
+      return daftar.length ? daftar : [...SEMUA_JENIS_STIMULUS];
+    })(),
     contoh: rapikanTeks(pRaw.contoh, MAKS_CONTOH),
+    bacaan: rapikanTeks(pRaw.bacaan, MAKS_CONTOH),
+    sumberBacaan: rapikanTeks(pRaw.sumberBacaan, 300),
   };
   return {
     pemandu,

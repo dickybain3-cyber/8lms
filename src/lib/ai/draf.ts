@@ -13,16 +13,24 @@ import { TIPE_LABEL } from "@/lib/soal";
 import { bersihkanHtml, escapeAtribut, teksKeHtml } from "@/lib/html-soal";
 import { normalisasiUraian } from "@/lib/analisis-jawaban";
 import { formatAngka, kontenSiapSimpan, type DraftSoal } from "@/lib/ai/rencana-soal";
+import { stimulusPerluRender } from "@/lib/ai/stimulus";
 
 export interface StatusGambar {
   url: string | null;
-  proses: "diagram" | "ilustrasi" | "unggah" | null;
+  proses: "diagram" | "ilustrasi" | "unggah" | "foto" | "stimulus" | null;
   galat: string | null;
+  /** Kredit wajib untuk foto Wikimedia (CC BY/BY-SA), ditulis di bawah gambar. */
+  kredit?: string | null;
 }
+
+export const STATUS_KOSONG: StatusGambar = { url: null, proses: null, galat: null, kredit: null };
 
 export interface DrafTinjau extends DraftSoal {
   dipakai: boolean;
   gambarStatus: StatusGambar;
+  /** Gambar hasil render stimulus tabel/grafik/infografis. Opsional untuk
+   *  draf lama di localStorage. */
+  stimulusStatus?: StatusGambar;
   galatSimpan: string | null;
   /** true = sudah diedit lewat form soal (editor kaya). `konten` sudah
    *  final apa adanya — HTML-nya tidak diturunkan ulang dari teks polos,
@@ -39,12 +47,22 @@ export interface SoalDokumen {
 type Obj = Record<string, unknown>;
 
 export function kontenFinalDraf(d: DrafTinjau): Obj {
-  return d.diedit ? { ...d.konten } : kontenSiapSimpan(d, d.gambarStatus.url);
+  return d.diedit
+    ? { ...d.konten }
+    : kontenSiapSimpan(d, d.gambarStatus.url, {
+        urlStimulus: d.stimulusStatus?.url ?? null,
+        kreditGambar: d.gambarStatus.kredit ?? null,
+      });
 }
 
-/** Draf ini masih menunggu gambar sebelum boleh disimpan? */
+/** Stimulus tabel/grafik/infografis yang belum dirender jadi gambar. */
+export function drafButuhStimulus(d: DrafTinjau): boolean {
+  return !d.diedit && stimulusPerluRender(d.stimulus) && !d.stimulusStatus?.url;
+}
+
+/** Draf ini masih menunggu gambar (atau render stimulus) sebelum boleh disimpan? */
 export function drafButuhGambar(d: DrafTinjau): boolean {
-  return !!d.gambar && !d.gambarStatus.url && !d.diedit;
+  return (!!d.gambar && !d.gambarStatus.url && !d.diedit) || drafButuhStimulus(d);
 }
 
 /** Cermin `bersihkanKunci` di halaman Pratinjau Ujian / RPC get_soal_untuk_siswa. */

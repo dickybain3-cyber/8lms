@@ -81,20 +81,20 @@ uji("validasi membuang level kognitif asing & memotong contoh", () => {
       tujuan: "Menjumlahkan pecahan",
       jenisAsesmen: "PTS",
       levelKognitif: ["C3", "C9", "C3", "<b>C4</b>"],
-      stimulus: "ya",
+      jenisStimulus: ["tabel", "video", "grafik"],
       contoh: "x".repeat(MAKS_CONTOH + 500),
     },
   });
   assert.ok(typeof r !== "string");
   assert.deepEqual(r.pemandu!.levelKognitif, ["C3"]);
-  assert.equal(r.pemandu!.stimulus, false, "hanya true yang dianggap ya");
+  assert.deepEqual(r.pemandu!.jenisStimulus, ["tabel", "grafik"], "jenis asing dibuang");
   assert.equal(r.pemandu!.contoh.length, MAKS_CONTOH);
 });
 uji("prompt memuat tujuan, level, stimulus, dan contoh", () => {
   const r = validasiRencana({
     topik: ["Pecahan"],
     jumlah: { pilgan_biasa: 3 },
-    pemandu: { tujuan: "Menjumlahkan pecahan", levelKognitif: ["C3"], stimulus: true, contoh: "1. 1/2 + 1/4 = ..." },
+    pemandu: { tujuan: "Menjumlahkan pecahan", levelKognitif: ["C3"], jenisStimulus: ["grafik"], bacaan: "Curah hujan naik.", sumberBacaan: "BMKG", contoh: "1. 1/2 + 1/4 = ..." },
   });
   assert.ok(typeof r !== "string");
   const p = buatPromptBatch(pecahBatch(r)[0], {
@@ -109,7 +109,10 @@ uji("prompt memuat tujuan, level, stimulus, dan contoh", () => {
   });
   assert.match(p, /Menjumlahkan pecahan/);
   assert.match(p, /C3/);
-  assert.match(p, /stimulus/);
+  assert.match(p, /setara soal TKA/);
+  assert.match(p, /- grafik:/);
+  assert.doesNotMatch(p, /- tabel:/);
+  assert.match(p, /sumber: BMKG/);
   assert.match(p, /1\/2 \+ 1\/4/);
   assert.match(p, /JANGAN menyalin/);
 });
@@ -148,9 +151,9 @@ uji("prompt campuran menyebut jumlah LOTS/MOTS/HOTS", () => {
   const p = buatPromptBatch(pecahBatch(r)[0], {
     mapel: "IPA", jenjang: 8, topik: r.topik, kesulitan: r.kesulitan, persenKesulitan: r.persenKesulitan, jumlahOpsi: 4, catatan: "", hindari: [],
   });
-  assert.match(p, /4 soal MOTS/);
-  assert.match(p, /6 soal HOTS/);
-  assert.doesNotMatch(p, /LOTS/);
+  assert.match(p, /Tingkat kesulitan dari 5 soal ini: 2 soal MOTS/, "batch pertama 5 soal (batas batch PG 6)");
+  assert.match(p, /3 soal HOTS/);
+  assert.doesNotMatch(p, /soal LOTS \(/);
 });
 
 console.log("draf, preview kuis, dokumen");
