@@ -68,7 +68,17 @@ function cariKolom(headerRow: string[], kandidat: string[]): number {
  */
 export async function bacaExcelGuru(
   file: File
-): Promise<HasilBacaExcel<{ nomorBaris: number; no?: string; nama: string; nip: string }>> {
+): Promise<
+  HasilBacaExcel<{
+    nomorBaris: number;
+    no?: string;
+    nama: string;
+    nip: string;
+    mapel: string;
+    username: string;
+    password: string;
+  }>
+> {
   try {
     const ExcelJS = (await import("exceljs")).default;
     const wb = new ExcelJS.Workbook();
@@ -91,6 +101,9 @@ export async function bacaExcelGuru(
     const idxNo = cariKolom(headerRow, ["no", "nomor"]);
     const idxNama = cariKolom(headerRow, ["nama", "namaguru", "namalengkap"]);
     const idxNip = cariKolom(headerRow, ["nip", "nuptk", "niy"]);
+    const idxMapel = cariKolom(headerRow, ["mapel", "matapelajaran", "mapelyangdiampu", "mapeldiampu"]);
+    const idxUserGuru = cariKolom(headerRow, ["username", "usernam"]);
+    const idxPassGuru = cariKolom(headerRow, ["password", "katasandi", "sandi"]);
 
     if (idxNama === -1 || idxNip === -1) {
       return {
@@ -99,7 +112,15 @@ export async function bacaExcelGuru(
       };
     }
 
-    const rows: { nomorBaris: number; no?: string; nama: string; nip: string }[] = [];
+    const rows: {
+      nomorBaris: number;
+      no?: string;
+      nama: string;
+      nip: string;
+      mapel: string;
+      username: string;
+      password: string;
+    }[] = [];
     let nomorBaris = 0;
     ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
       if (rowNumber <= headerRowNum) return;
@@ -113,6 +134,9 @@ export async function bacaExcelGuru(
         no: idxNo !== -1 ? values[idxNo] : undefined,
         nama,
         nip,
+        mapel: idxMapel !== -1 ? values[idxMapel] ?? "" : "",
+        username: idxUserGuru !== -1 ? values[idxUserGuru] ?? "" : "",
+        password: idxPassGuru !== -1 ? values[idxPassGuru] ?? "" : "",
       });
     });
 
@@ -139,6 +163,7 @@ export async function bacaExcelSiswa(
     nama: string;
     username: string;
     kelas: string;
+    password: string;
   }>
 > {
   try {
@@ -164,6 +189,7 @@ export async function bacaExcelSiswa(
     const idxNama = cariKolom(headerRow, ["nama", "namasiswa", "namalengkap"]);
     const idxUsername = cariKolom(headerRow, ["username", "usernam"]);
     const idxKelas = cariKolom(headerRow, ["kelas"]);
+    const idxPassword = cariKolom(headerRow, ["password", "katasandi", "sandi"]);
 
     if (idxNama === -1 || idxKelas === -1) {
       return {
@@ -178,6 +204,7 @@ export async function bacaExcelSiswa(
       nama: string;
       username: string;
       kelas: string;
+      password: string;
     }[] = [];
     let nomorBaris = 0;
 
@@ -195,6 +222,7 @@ export async function bacaExcelSiswa(
         nama,
         username,
         kelas: stringValues[idxKelas] ?? "",
+        password: idxPassword !== -1 ? stringValues[idxPassword] ?? "" : "",
       });
     });
 

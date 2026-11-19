@@ -36,6 +36,8 @@ export interface KolomExcel {
   lebar?: number;
   /** Rata tengah untuk kolom angka/status. Default: kiri. */
   tengah?: boolean;
+  /** Format sel teks ("@") — untuk NIP/username supaya Excel tidak mengubahnya jadi angka. */
+  teks?: boolean;
 }
 
 export interface SheetExcel {
@@ -51,6 +53,13 @@ export interface SheetExcel {
    * langsung melihat siapa yang perlu ujian susulan tanpa menyaring manual.
    */
   sorotBaris?: (baris: Record<string, unknown>) => boolean;
+  /**
+   * Kolom berisi pilihan tetap (dropdown Excel). Daftarnya ditulis ke
+   * sheet tersembunyi "_daftar" dan dirujuk lewat validasi data, supaya
+   * isian yang mengandung koma (mis. nama mapel) tetap utuh. Berlaku untuk
+   * baris data + `barisKosong` baris kosong di bawahnya (default 300).
+   */
+  dropdown?: { key: string; daftar: string[]; barisKosong?: number }[];
 }
 
 /** Nama tab Excel tidak boleh memuat : \ / ? * [ ] dan maksimal 31 karakter. */
@@ -71,7 +80,10 @@ export async function unduhExcel(
     const ws = wb.addWorksheet(namaSheetAman(def.nama));
     const jumlahKolom = def.kolom.length;
 
-    ws.columns = def.kolom.map((k) => ({ width: k.lebar ?? 18 }));
+    ws.columns = def.kolom.map((k) => ({
+      width: k.lebar ?? 18,
+      ...(k.teks ? { style: { numFmt: "@" } } : {}),
+    }));
 
     let barisKe = 1;
 
@@ -165,6 +177,32 @@ export async function unduhExcel(
     // Baris header dibekukan supaya tetap terlihat saat guru menggulir daftar
     // panjang — rekap satu jenjang bisa ratusan baris.
     ws.views = [{ state: "frozen", ySplit: barisHeader }];
+
+    for (const dd of def.dropdown ?? []) {
+      const kolomKe = def.kolom.findIndex((k) => k.key === dd.key) + 1;
+      if (kolomKe === 0 || dd.daftar.length === 0) continue;
+      let daftarWs = wb.getWorksheet("_daftar");
+      if (!daftarWs) {
+        daftarWs = wb.addWorksheet("_daftar");
+        daftarWs.state = "veryHidden";
+      }
+      const lembar = daftarWs;
+      const kolomDaftar = lembar.actualColumnCount + 1;
+      dd.daftar.forEach((v, i) => (lembar.getCell(i + 1, kolomDaftar).value = v));
+      const huruf = lembar.getColumn(kolomDaftar).letter;
+      const rumus = `'_daftar'!$${huruf}$1:$${huruf}$${dd.daftar.length}`;
+      const akhir = barisKe + def.baris.length + (dd.barisKosong ?? 300);
+      for (let r = barisKe; r < akhir; r++) {
+        ws.getCell(r, kolomKe).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [rumus],
+          showErrorMessage: true,
+          errorTitle: "Pilih dari daftar",
+          error: "Isi kolom ini dengan memilih dari daftar (klik panah di sel).",
+        };
+      }
+    }
   }
 
   const buffer = await wb.xlsx.writeBuffer();

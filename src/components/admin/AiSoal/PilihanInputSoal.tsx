@@ -2,32 +2,26 @@
 
 import Link from "next/link";
 import type { Jenjang } from "@/lib/jenjang";
-import GeneratorSoalAi from "./GeneratorSoalAi";
 import AmbilDariBank from "./AmbilDariBank";
 import ImporSoalJson from "./ImporSoalJson";
 
 /**
- * Empat cara mengisi soal sebuah mapel, ditampilkan berdampingan:
+ * Tiga cara mengisi soal sebuah mapel, ditampilkan berdampingan:
  *   1. Input manual       — form soal biasa
- *   2. Generate dengan AI — GeneratorSoalAi
- *   3. Ambil dari Bank    — AmbilDariBank
- *   4. Unggah JSON        — ImporSoalJson (Word -> Claude -> JSON)
+ *   2. Ambil dari Bank    — AmbilDariBank
+ *   3. Unggah JSON        — ImporSoalJson (Word -> Claude -> JSON)
  */
 export default function PilihanInputSoal({
   eventId,
   mapelId,
   mapelNama,
   jenjang,
-  jenjangData,
-  aiSiap,
   hrefManual,
 }: {
   eventId: string;
   mapelId: string;
   mapelNama: string;
   jenjang?: Jenjang;
-  jenjangData: Jenjang | null;
-  aiSiap: boolean;
   /** Tautan ke form manual. Diawali "#" = gulir ke form di halaman ini. */
   hrefManual: string;
 }) {
@@ -47,7 +41,7 @@ export default function PilihanInputSoal({
   );
 
   return (
-    <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
       {hrefManual.startsWith("#") ? (
         <a href={hrefManual} className={ubin}>
           {isi("fa-keyboard", "bg-navy-50 text-navy-700", "Input manual", "Ketik soal satu per satu, tempel gambar langsung.")}
@@ -58,24 +52,6 @@ export default function PilihanInputSoal({
         </Link>
       )}
 
-      <GeneratorSoalAi
-        eventId={eventId}
-        mapelId={mapelId}
-        mapelNama={mapelNama}
-        jenjang={jenjang}
-        jenjangData={jenjangData}
-        aiSiap={aiSiap}
-        renderPemicu={(buka) => (
-          <button type="button" onClick={buka} className={ubin}>
-            {isi(
-              "fa-wand-magic-sparkles",
-              "bg-kuning/25 text-amber-700",
-              "Generate dengan AI",
-              "Tulis topik & jumlah soal, AI membuat drafnya."
-            )}
-          </button>
-        )}
-      />
 
       <AmbilDariBank
         mapelId={mapelId}

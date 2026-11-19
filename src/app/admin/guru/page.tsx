@@ -9,7 +9,7 @@ import {
   deleteGuru,
 } from "./actions";
 import { cursorKeysetOr } from "@/lib/postgrest-filter";
-import ExportAkunCsvButton from "@/components/admin/ExportAkunCsvButton";
+import UnduhAkunGuruExcel from "./UnduhAkunGuruExcel";
 import { UnduhDetailGuruButton } from "@/components/admin/ExportExcel";
 
 const BATAS_BARIS = 200;
@@ -55,9 +55,14 @@ export default async function GuruPage(
     .from("guru")
     .select("id", { count: "exact", head: true });
 
+  // `mapel` (migrasi 0027) dicoba dulu; kalau kolomnya belum ada di
+  // project ini, halaman tetap tampil tanpa kolom Mapel.
+  const { error: cekMapel } = await supabase.from("guru").select("mapel").limit(1);
+  const adaMapel = !cekMapel;
+
   let daftarQuery = supabase
     .from("guru")
-    .select("id, nama, nip, username, created_at")
+    .select(adaMapel ? "id, nama, nip, username, created_at, mapel" : "id, nama, nip, username, created_at")
     .order("nama", { ascending: true })
     .order("id", { ascending: true })
     .limit(BATAS_BARIS);
@@ -80,7 +85,14 @@ export default async function GuruPage(
   }
 
   const { data: guruListRaw, error } = await daftarQuery;
-  const guruList = guruListRaw ?? [];
+  const guruList = (guruListRaw ?? []) as unknown as {
+    id: string;
+    nama: string;
+    nip: string | null;
+    username: string | null;
+    created_at: string;
+    mapel?: string | null;
+  }[];
 
   const adaFilter = Boolean(searchParams.cari);
 
@@ -100,10 +112,15 @@ export default async function GuruPage(
           <h1 className="font-serif text-2xl text-ink">Akun Guru</h1>
           <p className="mt-1 text-sm text-ink/60">
             {totalGuru ?? 0} akun guru sudah terdaftar. Login memakai{" "}
-            <b>username</b> — awalnya sama dengan NIP, dan guru bisa
-            menggantinya sendiri di menu Profil Saya. Password awal untuk
-            akun baru selalu{" "}
+            <b>username</b> — awalnya sama dengan NIP (kecuali diisi lain saat
+            impor), dan guru bisa menggantinya sendiri di menu Profil Saya.
+            Password awal bila tidak diisi:{" "}
             <code className="rounded bg-ink/5 px-1">guru123456</code>.
+            {!adaMapel && (
+              <span className="mt-1 block text-amber-700">
+                Kolom Mapel belum aktif — jalankan migrasi 0027_guru_mapel.sql di project ini.
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -122,16 +139,7 @@ export default async function GuruPage(
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ExportAkunCsvButton
-              headers={["Nama", "NIP", "Username", "Terdaftar"]}
-              rows={guruList.map((g) => [
-                g.nama,
-                g.nip ?? "",
-                g.username ?? "",
-                formatTanggal(g.created_at),
-              ])}
-              filename="akun-guru.csv"
-            />
+            <UnduhAkunGuruExcel />
             {sesi.isAdmin && <UnduhDetailGuruButton />}
           </div>
         </div>
@@ -190,6 +198,7 @@ export default async function GuruPage(
                   <tr className="border-b border-ink/10 bg-paper-dark/40 text-xs text-ink/50">
                     <th className="px-4 py-2 font-medium">Nama</th>
                     <th className="px-4 py-2 font-medium">NIP</th>
+                    {adaMapel && <th className="px-4 py-2 font-medium">Mapel</th>}
                     <th className="px-4 py-2 font-medium">Username</th>
                     <th className="px-4 py-2 font-medium">Terdaftar</th>
                     <th className="px-4 py-2 font-medium">Aksi</th>
@@ -202,6 +211,11 @@ export default async function GuruPage(
                       <td className="px-4 py-2 text-ink/70">
                         {g.nip ?? <span className="text-ink/30">—</span>}
                       </td>
+                      {adaMapel && (
+                        <td className="px-4 py-2 text-ink/70">
+                          {g.mapel || <span className="text-ink/30">—</span>}
+                        </td>
+                      )}
                       <td className="px-4 py-2 text-ink/70">
                         {g.username ?? (
                           <span className="text-ink/30" title="Akun lama, masih login pakai email asli">

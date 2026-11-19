@@ -21,6 +21,7 @@ export default function TambahSiswaManualForm({
   const router = useRouter();
   const [nama, setNama] = useState("");
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [kelasId, setKelasId] = useState(kelasList[0]?.id ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export default function TambahSiswaManualForm({
     setError(null);
     setHasil(null);
 
-    const res = await tambahSiswaManual(nama, username, kelasId);
+    const res = await tambahSiswaManual(nama, username, kelasId, password);
     setLoading(false);
 
     if (!res.success) {
@@ -45,6 +46,7 @@ export default function TambahSiswaManualForm({
     setHasil({ username: res.username, password: res.password });
     setNama("");
     setUsername("");
+    setPassword("");
     router.refresh();
   }
 
@@ -55,8 +57,8 @@ export default function TambahSiswaManualForm({
         Tambah Siswa Manual
       </h2>
       <p className="mb-4 text-xs text-ink/50">
-        Username dari nama (boleh diisi sendiri), password acak 3 huruf +
-        3 angka — siswa login dengan keduanya.
+        Username & password boleh diisi sendiri. Dikosongkan = username
+        dari nama, password acak 3 huruf + 3 angka.
       </p>
 
       <form onSubmit={submit} className="space-y-3">
@@ -105,6 +107,20 @@ export default function TambahSiswaManualForm({
               ))}
             </select>
           </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink/60">
+            Password <span className="font-normal text-ink/40">(opsional, min. 6 karakter)</span>
+          </label>
+          <input
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="otomatis acak"
+            autoComplete="off"
+            className="w-full rounded-md border border-ink/15 bg-white px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink/30"
+          />
         </div>
 
         {error && (

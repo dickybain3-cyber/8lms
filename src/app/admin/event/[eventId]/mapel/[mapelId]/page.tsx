@@ -12,12 +12,9 @@ import BadgeJenjang from "@/components/admin/BadgeJenjang";
 import DeleteMapelButton from "./DeleteMapelButton";
 import DeleteSoalButton from "./DeleteSoalButton";
 import SkorInline from "./SkorInline";
-import GeneratorSoalAi from "@/components/admin/AiSoal/GeneratorSoalAi";
 import AmbilDariBank from "@/components/admin/AiSoal/AmbilDariBank";
 import PilihanInputSoal from "@/components/admin/AiSoal/PilihanInputSoal";
 import ImporSoalJson from "@/components/admin/AiSoal/ImporSoalJson";
-import { aiSiapJenjang } from "@/lib/ai/akses";
-import { getJenjangFromServerCookies } from "@/lib/jenjang-server";
 import {
   BarisStatistik,
   Info,
@@ -178,19 +175,6 @@ async function IsiHalamanMapel({
   const { mapel, soalList, totalSkor, jumlahSudahSubmit, dampakHapusMapel } = data;
   const qs = jenjang ? `?jenjang=${jenjang}` : "";
   const adaSoal = soalList.length > 0;
-  const jenjangData = jenjang ?? await getJenjangFromServerCookies();
-  const aiSiap = await aiSiapJenjang(jenjangData);
-  const generatorAi = (varian: "tombol" | "kartu") => (
-    <GeneratorSoalAi
-      eventId={eventId}
-      mapelId={mapelId}
-      mapelNama={mapel.nama}
-      jenjang={jenjang}
-      jenjangData={jenjangData}
-      aiSiap={aiSiap}
-      varian={varian}
-    />
-  );
 
   return (
     <div>
@@ -263,7 +247,6 @@ async function IsiHalamanMapel({
               </>
             )}
 
-            {generatorAi("tombol")}
             <AmbilDariBank mapelId={mapelId} mapelNama={mapel.nama} jenjang={jenjang} />
             <ImporSoalJson eventId={eventId} mapelId={mapelId} mapelNama={mapel.nama} jenjang={jenjang} />
             <Link
@@ -347,8 +330,6 @@ async function IsiHalamanMapel({
           mapelId={mapelId}
           mapelNama={mapel.nama}
           jenjang={jenjang}
-          jenjangData={jenjangData}
-          aiSiap={aiSiap}
           hrefManual={`/admin/event/${eventId}/mapel/${mapelId}/soal/baru${qs}`}
         />
       )}

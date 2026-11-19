@@ -2,28 +2,25 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { DAFTAR_MAPEL } from "@/lib/akun-impor";
+import { PASSWORD_AWAL_GURU } from "@/lib/akun";
 import { tambahGuruManual } from "./actions";
 
 /**
- * Form tambah SATU guru — bertetangga dengan `ImportGuruForm` (Excel)
- * tapi untuk kasus yang jauh lebih sering di lapangan: satu guru baru
- * masuk di tengah semester, tidak sepadan membuat file Excel untuk itu.
- *
- * Hanya dua bidang yang diminta (Nama, NIP) — username dan password
- * SENGAJA tidak ditanya sama sekali, supaya tidak ada admin yang secara
- * tidak sengaja mengetik username berbeda dari NIP. Aturan itu (username
- * = NIP, password = guru123456) hidup satu tempat di `src/lib/akun.ts`
- * dan `actions.ts`, bukan di form ini.
+ * Form tambah SATU guru. Nama, NIP, Mapel (dropdown dari DAFTAR_MAPEL
+ * supaya ejaannya seragam). Username & password boleh diisi; kosong =
+ * username NIP, password awal guru123456.
  */
 export default function TambahGuruManualForm() {
   const router = useRouter();
   const [nama, setNama] = useState("");
   const [nip, setNip] = useState("");
+  const [mapel, setMapel] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasil, setHasil] = useState<{ username: string; password: string } | null>(
-    null
-  );
+  const [hasil, setHasil] = useState<{ username: string; password: string } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,7 +28,7 @@ export default function TambahGuruManualForm() {
     setError(null);
     setHasil(null);
 
-    const res = await tambahGuruManual(nama, nip);
+    const res = await tambahGuruManual(nama, nip, mapel, username, password);
     setLoading(false);
 
     if (!res.success) {
@@ -42,8 +39,14 @@ export default function TambahGuruManualForm() {
     setHasil({ username: res.username, password: res.password });
     setNama("");
     setNip("");
+    setUsername("");
+    setPassword("");
     router.refresh();
   }
+
+  const input =
+    "w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink/30";
+  const label = "mb-1 block text-xs font-medium text-ink/60";
 
   return (
     <div className="card-mewah p-5">
@@ -52,48 +55,80 @@ export default function TambahGuruManualForm() {
         Tambah Guru Manual
       </h2>
       <p className="mb-4 text-xs text-ink/50">
-        Untuk satu guru baru. Username otomatis = NIP, password awal
-        otomatis = <code className="rounded bg-ink/5 px-1">guru123456</code>.
+        Username & password boleh diisi sendiri. Dikosongkan = username NIP, password{" "}
+        <code className="rounded bg-ink/5 px-1">{PASSWORD_AWAL_GURU}</code>.
       </p>
 
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-ink/60">
-            Nama Lengkap
-          </label>
+          <label className={label}>Nama Lengkap</label>
           <input
             type="text"
             required
             value={nama}
             onChange={(e) => setNama(e.target.value)}
             placeholder="mis. Budi Santoso, S.Pd."
-            className="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink/30"
+            className={input}
           />
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs font-medium text-ink/60">
-            NIP
-          </label>
-          <input
-            type="text"
-            required
-            inputMode="numeric"
-            value={nip}
-            onChange={(e) => setNip(e.target.value)}
-            placeholder="mis. 196504121990031005"
-            className="w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink/30"
-          />
-          <p className="mt-1 text-[0.7rem] text-ink/40">
-            8-25 digit angka. Guru honorer tanpa NIP resmi boleh memakai NIY
-            atau nomor pegawai internal sekolah.
-          </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className={label}>NIP</label>
+            <input
+              type="text"
+              required
+              inputMode="numeric"
+              value={nip}
+              onChange={(e) => setNip(e.target.value)}
+              placeholder="18 digit"
+              className={input}
+            />
+          </div>
+          <div>
+            <label className={label}>Mapel</label>
+            <select value={mapel} onChange={(e) => setMapel(e.target.value)} className={input}>
+              <option value="">— pilih mapel —</option>
+              {DAFTAR_MAPEL.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className={label}>
+              Username <span className="font-normal text-ink/40">(opsional)</span>
+            </label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="kosong = NIP"
+              autoComplete="off"
+              className={input}
+            />
+          </div>
+          <div>
+            <label className={label}>
+              Password <span className="font-normal text-ink/40">(opsional)</span>
+            </label>
+            <input
+              type="text"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={PASSWORD_AWAL_GURU}
+              autoComplete="off"
+              className={`${input} font-mono`}
+            />
+          </div>
         </div>
 
         {error && (
-          <p className="rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">
-            {error}
-          </p>
+          <p className="rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</p>
         )}
 
         <button
@@ -122,10 +157,6 @@ export default function TambahGuruManualForm() {
             Username: <code className="rounded bg-white px-1">{hasil.username}</code>
             {" · "}
             Password: <code className="rounded bg-white px-1">{hasil.password}</code>
-          </p>
-          <p className="mt-1 text-emerald-700/70">
-            Sampaikan ke guru yang bersangkutan — kombinasi ini tidak
-            ditampilkan lagi setelah halaman ini ditutup.
           </p>
         </div>
       )}

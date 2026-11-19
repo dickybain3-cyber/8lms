@@ -9,6 +9,36 @@ import {
   normalkanUsername,
   PASSWORD_AWAL_GURU,
 } from "@/lib/akun";
+import { cocokkanMapel, galatPasswordImpor } from "@/lib/akun-impor";
+
+type AdminClientGuru = Awaited<ReturnType<typeof createAdminClient>>;
+
+/**
+ * Insert baris guru. Kolom `mapel` (0027) dan `password_status` (0017)
+ * dibuang otomatis kalau migrasinya belum dijalankan di project ini —
+ * akun tetap terbuat, hanya isian itu yang tidak tersimpan.
+ */
+async function sisipGuru(
+  admin: AdminClientGuru,
+  baris: Record<string, unknown>
+): Promise<{ error: { message: string } | null; tanpaMapel: boolean }> {
+  let data = { ...baris };
+  let tanpaMapel = false;
+  for (let i = 0; i < 3; i++) {
+    const { error } = await admin.from("guru").insert(data);
+    if (!error) return { error: null, tanpaMapel };
+    const kolom = ["mapel", "password_status"].find((k) => k in data && error.message.includes(k));
+    if (!kolom) return { error, tanpaMapel };
+    if (kolom === "mapel") tanpaMapel = true;
+    const { [kolom]: _buang, ...sisa } = data;
+    void _buang;
+    data = sisa;
+  }
+  return { error: { message: "Gagal menyimpan baris guru." }, tanpaMapel };
+}
+
+/** Status password untuk akun baru: seragam = 'awal', selain itu ditentukan admin. */
+const statusPassword = (pw: string) => (pw === PASSWORD_AWAL_GURU ? "awal" : "direset_admin");
 
 /**
  * ── REVISI BESAR SESI INI: GURU LOGIN PAKAI NIP, BUKAN EMAIL ──
@@ -33,6 +63,12 @@ export type ImportGuruInputRow = {
   no?: string | number;
   nama: string;
   nip: string;
+  /** Teks mapel; dicocokkan ke DAFTAR_MAPEL. Kosong = belum diisi. */
+  mapel?: string;
+  /** Kosong = NIP. */
+  username?: string;
+  /** Kosong = PASSWORD_AWAL_GURU. */
+  password?: string;
 };
 
 export type ImportGuruRowResult =
@@ -41,6 +77,7 @@ export type ImportGuruRowResult =
       nomorBaris: number;
       nama: string;
       nip: string;
+      mapel: string;
       username: string;
       password: string;
     }
@@ -132,7 +169,32 @@ export async function importGuruBatch(
       continue;
     }
 
-    const username = normalkanUsername(nip);
+    const mapel = cocokkanMapel(row.mapel);
+    if (mapel === null) {
+      results.push({
+        status: "dilewati",
+        nomorBaris: row.nomorBaris,
+        nama,
+        nip,
+        alasan: `Mapel '${row.mapel}' tidak dikenal — pilih dari dropdown di template, dilewati.`,
+      });
+      continue;
+    }
+
+    const passwordDiminta = String(row.password ?? "").trim();
+    const salahPassword = galatPasswordImpor(passwordDiminta);
+    if (salahPassword) {
+      results.push({
+        status: "dilewati",
+        nomorBaris: row.nomorBaris,
+        nama,
+        nip,
+        alasan: `${salahPassword} Kosongkan supaya memakai password awal.`,
+      });
+      continue;
+    }
+
+    const username = normalkanUsername(row.username || "") || normalkanUsername(nip);
 
     if (usernameDipakaiDiBatchIni.has(username)) {
       results.push({
@@ -140,7 +202,7 @@ export async function importGuruBatch(
         nomorBaris: row.nomorBaris,
         nama,
         nip,
-        alasan: `NIP '${nip}' dobel di dalam file ini, dilewati.`,
+        alasan: `NIP/username '${username}' dobel di dalam file ini, dilewati.`,
       });
       continue;
     }
@@ -176,7 +238,7 @@ export async function importGuruBatch(
     }
 
     const email = emailGuruDariUsername(username);
-    const password = PASSWORD_AWAL_GURU;
+    const password = passwordDiminta || PASSWORD_AWAL_GURU;
 
     const { data: created, error: createError } =
       await admin.auth.admin.createUser({
@@ -198,11 +260,13 @@ export async function importGuruBatch(
       continue;
     }
 
-    const { error: insertError } = await admin.from("guru").insert({
+    const { error: insertError } = await sisipGuru(admin, {
       auth_id: created.user.id,
       nama,
       nip,
       username,
+      mapel: mapel || null,
+      password_status: statusPassword(password),
     });
 
     if (insertError) {
@@ -228,6 +292,7 @@ export async function importGuruBatch(
       nomorBaris: row.nomorBaris,
       nama,
       nip,
+      mapel,
       username,
       password,
     });
@@ -268,7 +333,10 @@ export type TambahGuruManualResult =
  */
 export async function tambahGuruManual(
   nama: string,
-  nip: string
+  nip: string,
+  mapelInput = "",
+  usernameInput = "",
+  passwordInput = ""
 ): Promise<TambahGuruManualResult> {
   const sessionSupabase = await createClient();
   const guruRow = await pastikanPemanggilGuru(sessionSupabase);
@@ -290,7 +358,14 @@ export async function tambahGuruManual(
     };
   }
 
-  const username = normalkanUsername(nipBersih);
+  const mapel = cocokkanMapel(mapelInput);
+  if (mapel === null) return { success: false, error: "Mapel tidak dikenal — pilih dari daftar." };
+  const passwordBersih = String(passwordInput ?? "").trim();
+  const salahPassword = galatPasswordImpor(passwordBersih);
+  if (salahPassword) return { success: false, error: salahPassword };
+  const password = passwordBersih || PASSWORD_AWAL_GURU;
+
+  const username = normalkanUsername(usernameInput) || normalkanUsername(nipBersih);
 
   let admin;
   try {
@@ -318,7 +393,7 @@ export async function tambahGuruManual(
 
   const email = emailGuruDariUsername(username);
   const { data: created, error: createError } = await admin.auth.admin.createUser(
-    { email, password: PASSWORD_AWAL_GURU, email_confirm: true }
+    { email, password, email_confirm: true }
   );
   if (createError || !created?.user) {
     return {
@@ -327,11 +402,13 @@ export async function tambahGuruManual(
     };
   }
 
-  const { error: insertError } = await admin.from("guru").insert({
+  const { error: insertError } = await sisipGuru(admin, {
     auth_id: created.user.id,
     nama: namaBersih,
     nip: nipBersih,
     username,
+    mapel: mapel || null,
+    password_status: statusPassword(password),
   });
 
   if (insertError) {
@@ -352,7 +429,7 @@ export async function tambahGuruManual(
 
   revalidatePath("/admin/guru");
   revalidatePath("/admin/log");
-  return { success: true, nama: namaBersih, username, password: PASSWORD_AWAL_GURU };
+  return { success: true, nama: namaBersih, username, password };
 }
 
 export type ResetPasswordResult =
@@ -524,4 +601,28 @@ export async function deleteGuru(guruId: string): Promise<HapusAkunResult> {
   revalidatePath("/admin/guru");
   revalidatePath("/admin/log");
   return { success: true };
+}
+
+/** Semua akun guru untuk ekspor Excel (mapel kosong kalau migrasi 0027 belum jalan). */
+export async function daftarSemuaAkunGuru(): Promise<{
+  error: string | null;
+  baris: { nama: string; nip: string; mapel: string; username: string }[];
+}> {
+  const supabase = await createClient();
+  if (!(await pastikanPemanggilGuru(supabase))) return { error: "Ditolak: hanya guru/admin yang login.", baris: [] };
+
+  let res = await supabase.from("guru").select("nama, nip, username, mapel").order("nama").limit(2000);
+  if (res.error && /mapel/.test(res.error.message)) {
+    res = (await supabase.from("guru").select("nama, nip, username").order("nama").limit(2000)) as typeof res;
+  }
+  if (res.error) return { error: "Gagal memuat daftar akun guru.", baris: [] };
+  return {
+    error: null,
+    baris: (res.data ?? []).map((g) => ({
+      nama: g.nama,
+      nip: g.nip ?? "",
+      mapel: (g as { mapel?: string | null }).mapel ?? "",
+      username: g.username ?? "",
+    })),
+  };
 }

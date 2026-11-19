@@ -8,7 +8,8 @@ import {
   deleteSiswa,
 } from "./actions";
 import { cursorKeysetOr, escapePostgrestValue } from "@/lib/postgrest-filter";
-import ExportAkunCsvButton from "@/components/admin/ExportAkunCsvButton";
+import { getSesiGuru } from "@/lib/admin-guard";
+import { HapusSemuaSiswa, UnduhAkunSiswaExcel } from "./SiswaExcelHapusSemua";
 
 const BATAS_BARIS = 200;
 
@@ -33,6 +34,7 @@ export default async function SiswaPage(
 ) {
   const searchParams = await props.searchParams;
   const supabase = await createClient();
+  const sesi = await getSesiGuru();
 
   const { data: kelasList } = await supabase
     .from("kelas")
@@ -135,16 +137,7 @@ export default async function SiswaPage(
               karena username sudah dipakai.
             </p>
           </div>
-          <ExportAkunCsvButton
-            headers={["Nama", "Username", "Kelas", "Terdaftar"]}
-            rows={siswaList.map((s) => [
-              s.nama,
-              s.username,
-              kelasNamaMap.get(s.kelas_id) ?? "",
-              formatTanggal(s.created_at),
-            ])}
-            filename="akun-siswa.csv"
-          />
+          <UnduhAkunSiswaExcel />
         </div>
 
         <form
@@ -285,6 +278,8 @@ export default async function SiswaPage(
           </div>
         )}
       </div>
+
+      {sesi.isAdmin && <HapusSemuaSiswa totalSiswa={totalSiswa ?? 0} />}
     </div>
   );
 }

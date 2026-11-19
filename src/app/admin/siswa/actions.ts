@@ -10,6 +10,8 @@ import {
   normalkanUsername,
   pilihUsernameSiswa,
 } from "@/lib/akun";
+import { getSesiGuru } from "@/lib/admin-guard";
+import { KONFIRMASI_HAPUS_SEMUA_SISWA, galatPasswordImpor } from "@/lib/akun-impor";
 
 export type ImportSiswaInputRow = {
   nomorBaris: number; // nomor baris asli di file (1-based, header tidak dihitung) — untuk pesan error yang bisa ditelusuri guru
@@ -17,7 +19,17 @@ export type ImportSiswaInputRow = {
   /** Kosong = dibuat otomatis dari nama (lihat `pilihUsernameSiswa`). */
   username: string;
   kelas: string;
+  /** Kosong = dibuat acak 3 huruf + 3 angka (`buatPasswordSiswa`). */
+  password?: string;
 };
+
+/** Nama kelas dicocokkan longgar: tanpa spasi, huruf kecil ("7.1 " = "7.1"). */
+const kunciKelas = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+
+async function petaKelas(admin: AdminClient): Promise<Map<string, { id: string; nama: string }>> {
+  const { data } = await admin.from("kelas").select("id, nama");
+  return new Map((data ?? []).map((k) => [kunciKelas(k.nama), { id: k.id, nama: k.nama }]));
+}
 
 export type ImportSiswaRowResult =
   | {
@@ -141,8 +153,7 @@ export async function importSiswaBatch(
     }));
   }
 
-  const { data: kelasList } = await admin.from("kelas").select("id, nama");
-  const kelasMap = new Map((kelasList ?? []).map((k) => [k.nama, k.id]));
+  const kelasMap = await petaKelas(admin);
 
   // Analisis race condition dua guru import bersamaan dengan username sama
   // persis (nunggak sejak Sesi 6-7, dianalisis Sesi 10): pre-check di bawah
@@ -184,7 +195,8 @@ export async function importSiswaBatch(
       continue;
     }
 
-    const kelasId = kelasMap.get(kelasNamaInput);
+    const kelasCocok = kelasMap.get(kunciKelas(kelasNamaInput));
+    const kelasId = kelasCocok?.id;
     if (!kelasId) {
       results.push({
         status: "dilewati",
@@ -207,7 +219,19 @@ export async function importSiswaBatch(
       continue;
     }
 
-    const password = buatPasswordSiswa();
+    const passwordDiminta = String(row.password ?? "").trim();
+    const salahPassword = galatPasswordImpor(passwordDiminta);
+    if (salahPassword) {
+      results.push({
+        status: "dilewati",
+        nomorBaris: row.nomorBaris,
+        nama,
+        username: usernameDiminta,
+        alasan: `${salahPassword} Kosongkan kolom Password supaya dibuatkan otomatis.`,
+      });
+      continue;
+    }
+    const password = passwordDiminta || buatPasswordSiswa();
     const akun = await buatAkunAuthSiswa(admin, nama, usernameDiminta, terpakai, password);
     if (!akun.ok) {
       results.push({
@@ -251,7 +275,7 @@ export async function importSiswaBatch(
       nomorBaris: row.nomorBaris,
       nama,
       username,
-      kelasNama: kelasNamaInput,
+      kelasNama: kelasCocok!.nama,
       password,
     });
   }
@@ -421,7 +445,8 @@ export type TambahSiswaManualResult =
 export async function tambahSiswaManual(
   nama: string,
   username: string,
-  kelasId: string
+  kelasId: string,
+  passwordDiminta = ""
 ): Promise<TambahSiswaManualResult> {
   const sessionSupabase = await createClient();
   const {
@@ -468,7 +493,11 @@ export async function tambahSiswaManual(
     };
   }
 
-  const password = buatPasswordSiswa();
+  const passwordBersih = String(passwordDiminta ?? "").trim();
+  const salahPassword = galatPasswordImpor(passwordBersih);
+  if (salahPassword) return { success: false, error: salahPassword };
+
+  const password = passwordBersih || buatPasswordSiswa();
   const akun = await buatAkunAuthSiswa(admin, namaBersih, usernameDiminta, terpakai, password);
   if (!akun.ok) return { success: false, error: akun.pesan };
 
@@ -646,4 +675,161 @@ export async function deleteSiswa(siswaId: string): Promise<HapusAkunResult> {
   revalidatePath("/admin/siswa");
   revalidatePath("/admin/log");
   return { success: true };
+}
+
+// ===========================================================================
+// GENERATE AKUN, DAFTAR LENGKAP, HAPUS SELURUH SISWA
+// ===========================================================================
+
+export type BarisGenerateSiswa = {
+  nomorBaris: number;
+  nama: string;
+  kelas: string;
+  username: string;
+  password: string;
+  /** null = siap diimpor. */
+  galat: string | null;
+};
+
+/** Penjaga bersama: pemanggil harus guru yang login. */
+async function pastikanGuru(): Promise<string | null> {
+  const sessionSupabase = await createClient();
+  const {
+    data: { user },
+  } = await sessionSupabase.auth.getUser();
+  const { data: guruRow } = await sessionSupabase
+    .from("guru")
+    .select("id")
+    .eq("auth_id", user?.id ?? "")
+    .maybeSingle();
+  return guruRow ? null : "Ditolak: hanya guru/admin yang login.";
+}
+
+/**
+ * "Belum punya username & password?" — buatkan dulu, BELUM membuat akun.
+ *
+ * Username dari nama (aturan `pilihUsernameSiswa`, menghindari SEMUA
+ * username yang sudah ada di project ini dan yang baru dipilih di daftar
+ * ini), password acak 3 huruf + 3 angka. Hasilnya diunduh guru sebagai
+ * Excel per kelas, lalu (kalau guru setuju) dikirim apa adanya ke
+ * `importSiswaBatch` — username & password yang tercetak di Excel itulah
+ * yang dipakai, jadi kartu login tidak perlu dicetak ulang.
+ */
+export async function siapkanAkunSiswa(
+  rows: { nomorBaris: number; nama: string; kelas: string }[]
+): Promise<{ error: string | null; baris: BarisGenerateSiswa[] }> {
+  const tolak = await pastikanGuru();
+  if (tolak) return { error: tolak, baris: [] };
+  if (rows.length > 2000) return { error: "Maksimal 2000 baris sekali generate.", baris: [] };
+
+  let admin;
+  try {
+    admin = await createAdminClient();
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Konfigurasi server tidak lengkap.", baris: [] };
+  }
+
+  const kelasMap = await petaKelas(admin);
+  const terpakai = await ambilUsernameTerpakai(admin);
+  const baris: BarisGenerateSiswa[] = rows.map((r) => {
+    const nama = String(r.nama ?? "").trim();
+    const kelasInput = String(r.kelas ?? "").trim();
+    const kelas = kelasMap.get(kunciKelas(kelasInput));
+    const dasar = { nomorBaris: r.nomorBaris, nama, kelas: kelas?.nama ?? kelasInput, username: "", password: "" };
+    if (!nama || !kelasInput) return { ...dasar, galat: "Nama/kelas kosong." };
+    if (!kelas) return { ...dasar, galat: `Kelas '${kelasInput}' tidak ada di sistem.` };
+    const username = pilihUsernameSiswa(nama, terpakai);
+    terpakai.add(username);
+    return { ...dasar, username, password: buatPasswordSiswa(), galat: null };
+  });
+
+  return { error: null, baris };
+}
+
+/** Semua akun siswa (tanpa batas 200 baris halaman) untuk ekspor Excel per kelas. */
+export async function daftarSemuaAkunSiswa(): Promise<{
+  error: string | null;
+  baris: { nama: string; username: string; kelas: string }[];
+}> {
+  const tolak = await pastikanGuru();
+  if (tolak) return { error: tolak, baris: [] };
+  const supabase = await createClient();
+
+  const { data: kelasList } = await supabase.from("kelas").select("id, nama");
+  const namaKelas = new Map((kelasList ?? []).map((k) => [k.id, k.nama as string]));
+
+  const baris: { nama: string; username: string; kelas: string }[] = [];
+  for (let dari = 0; ; dari += 1000) {
+    const { data, error } = await supabase
+      .from("siswa")
+      .select("nama, username, kelas_id")
+      .order("nama")
+      .order("id")
+      .range(dari, dari + 999);
+    if (error) return { error: "Gagal memuat daftar akun siswa.", baris: [] };
+    for (const s of data ?? []) {
+      baris.push({ nama: s.nama, username: s.username, kelas: namaKelas.get(s.kelas_id) ?? "" });
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return { error: null, baris };
+}
+
+/**
+ * Hapus SELURUH akun siswa di project (jenjang) ini — untuk awal tahun
+ * ajaran, sebelum impor siswa dengan kelas barunya. KHUSUS ADMIN.
+ *
+ * Bekerja per batch (40 akun per panggilan) supaya tidak kena batas waktu
+ * Server Action; klien memanggil berulang sampai `sisa` = 0. Sama seperti
+ * `deleteSiswa`: menghapus akun auth -> baris siswa, jawaban, dan nilai
+ * ikut terhapus lewat cascade. Tabel kelas TIDAK ikut dihapus.
+ */
+export async function hapusSemuaSiswaBatch(
+  konfirmasi: string
+): Promise<{ error: string | null; dihapus: number; sisa: number }> {
+  if (konfirmasi !== KONFIRMASI_HAPUS_SEMUA_SISWA) {
+    return { error: `Ketik "${KONFIRMASI_HAPUS_SEMUA_SISWA}" untuk konfirmasi.`, dihapus: 0, sisa: -1 };
+  }
+  const sesi = await getSesiGuru();
+  if (!sesi.isAdmin) {
+    return { error: "Hanya akun admin yang boleh menghapus seluruh data siswa.", dihapus: 0, sisa: -1 };
+  }
+
+  let admin;
+  try {
+    admin = await createAdminClient();
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Konfigurasi server tidak lengkap.", dihapus: 0, sisa: -1 };
+  }
+
+  const { data: target, error: bacaError } = await admin.from("siswa").select("id, auth_id").limit(40);
+  if (bacaError) return { error: `Gagal membaca data siswa: ${bacaError.message}`, dihapus: 0, sisa: -1 };
+
+  let dihapus = 0;
+  const gagal: string[] = [];
+  for (const s of target ?? []) {
+    const { error } = s.auth_id
+      ? await admin.auth.admin.deleteUser(s.auth_id)
+      : await admin.from("siswa").delete().eq("id", s.id);
+    if (error) gagal.push(error.message);
+    else dihapus++;
+  }
+
+  const { count } = await admin.from("siswa").select("id", { count: "exact", head: true });
+
+  const sessionSupabase = await createClient();
+  const { error: logError } = await sessionSupabase.rpc("catat_log_aktivitas", {
+    p_aksi: "hapus_semua_siswa",
+    p_entitas: "siswa",
+    p_entitas_id: null,
+    p_detail: { jumlah_dihapus: dihapus, jumlah_gagal: gagal.length, sisa: count ?? 0 },
+  });
+  if (logError) console.error("Gagal mencatat log hapus_semua_siswa:", logError);
+
+  revalidatePath("/admin/siswa");
+  revalidatePath("/admin/log");
+  if (gagal.length > 0 && dihapus === 0) {
+    return { error: `Gagal menghapus: ${gagal[0]}`, dihapus, sisa: count ?? 0 };
+  }
+  return { error: null, dihapus, sisa: count ?? 0 };
 }
