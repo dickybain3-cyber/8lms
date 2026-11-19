@@ -15,6 +15,7 @@ import SkorInline from "./SkorInline";
 import GeneratorSoalAi from "@/components/admin/AiSoal/GeneratorSoalAi";
 import AmbilDariBank from "@/components/admin/AiSoal/AmbilDariBank";
 import PilihanInputSoal from "@/components/admin/AiSoal/PilihanInputSoal";
+import ImporSoalJson from "@/components/admin/AiSoal/ImporSoalJson";
 import { aiSiapJenjang } from "@/lib/ai/akses";
 import { getJenjangFromServerCookies } from "@/lib/jenjang-server";
 import {
@@ -264,6 +265,7 @@ async function IsiHalamanMapel({
 
             {generatorAi("tombol")}
             <AmbilDariBank mapelId={mapelId} mapelNama={mapel.nama} jenjang={jenjang} />
+            <ImporSoalJson eventId={eventId} mapelId={mapelId} mapelNama={mapel.nama} jenjang={jenjang} />
             <Link
               href={`/admin/event/${eventId}/mapel/${mapelId}/soal/baru${qs}`}
               className={TOMBOL_UTAMA}

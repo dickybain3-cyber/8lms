@@ -547,7 +547,7 @@ export interface KonteksAdmin {
  * membatalkan aksi utama (sudah lolos di titik ini) — cukup dicatat ke
  * console, konsisten dengan seluruh file lain di project ini.
  */
-async function catatLogManual(
+export async function catatLogManual(
   client: AdminClient,
   konteks: KonteksAdmin,
   jenjangTarget: Jenjang,
