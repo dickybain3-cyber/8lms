@@ -324,9 +324,78 @@ const TAG_FORMAT = /&lt;(\/?)(b|i|u|sub|sup|strong|em)&gt;/gi;
 
 class GambarHilang extends Error {}
 
+const formatTeks = (s: string) => teksKeHtml(s).replace(TAG_FORMAT, "<$1$2>");
+
+/** Sel satu baris berformat tabel (`a | b | c`), atau null kalau bukan. */
+function selBaris(baris: string): string[] | null {
+  const t = baris.trim();
+  if (!t.includes("|")) return null;
+  const sel = t.replace(/^\|/, "").replace(/\|$/, "").split("|").map((s) => s.trim());
+  return sel.length >= 2 ? sel : null;
+}
+
+/** Baris pemisah gaya Markdown: `|---|:---:|`. */
+const BARIS_PEMISAH = /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$/;
+
+/**
+ * Teks -> HTML, dengan blok tabel dikenali otomatis: DUA baris atau lebih
+ * berurutan yang memakai pemisah " | " menjadi <table>, baris pertama
+ * jadi judul kolom. Baris pemisah Markdown (`|---|`) diabaikan. Satu
+ * baris saja (mis. nilai mutlak |x|) tidak dianggap tabel.
+ */
+export function teksKeHtmlBertabel(sumber: string): string {
+  const baris = sumber.split("\n");
+  type Seg = { tabel: false; baris: string[] } | { tabel: true; isi: string[][] };
+  const seg: Seg[] = [];
+
+  for (let i = 0; i < baris.length; ) {
+    const isi: string[][] = [];
+    let j = i;
+    while (j < baris.length) {
+      if (isi.length > 0 && BARIS_PEMISAH.test(baris[j].trim())) {
+        j++;
+        continue;
+      }
+      const sel = selBaris(baris[j]);
+      if (!sel) break;
+      isi.push(sel);
+      j++;
+    }
+    if (isi.length >= 2) {
+      seg.push({ tabel: true, isi });
+      i = j;
+      continue;
+    }
+    const akhir = seg[seg.length - 1];
+    if (akhir && !akhir.tabel) akhir.baris.push(baris[i]);
+    else seg.push({ tabel: false, baris: [baris[i]] });
+    i++;
+  }
+
+  return seg
+    .map((s, k) => {
+      if (!s.tabel) {
+        const b = [...s.baris];
+        // Baris kosong yang menempel ke tabel tidak perlu jadi <br>.
+        if (seg[k - 1]?.tabel) while (b.length && !b[0].trim()) b.shift();
+        if (seg[k + 1]?.tabel) while (b.length && !b[b.length - 1].trim()) b.pop();
+        return formatTeks(b.join("\n"));
+      }
+      const kolom = Math.max(...s.isi.map((r) => r.length));
+      const sel = (r: string[], tag: "th" | "td") =>
+        Array.from({ length: kolom }, (_, c) => `<${tag}>${formatTeks(r[c] ?? "")}</${tag}>`).join("");
+      const [kepala, ...badan] = s.isi;
+      return (
+        `<table><thead><tr>${sel(kepala, "th")}</tr></thead>` +
+        `<tbody>${badan.map((r) => `<tr>${sel(r, "td")}</tr>`).join("")}</tbody></table>`
+      );
+    })
+    .join("");
+}
+
 /** Teks + penanda -> { teks polos, html aman }. */
 function teksKeKonten(sumber: string, peta: Map<string, string>, lebar: string): { teks: string; html: string } {
-  let html = teksKeHtml(sumber).replace(TAG_FORMAT, "<$1$2>");
+  let html = teksKeHtmlBertabel(sumber);
   html = html.replace(RE_PENANDA, (_, ref: string) => {
     const url = adalahUrl(ref) ? ref.trim() : peta.get(kunciGambar(ref));
     if (!url) throw new GambarHilang(ref);
@@ -489,8 +558,9 @@ export const TEMPLATE_IMPOR = {
       nomor: 5,
       tipe: "uraian_singkat",
       skor: 2,
-      pertanyaan: "Ibu kota Provinsi Jawa Timur adalah ....",
-      kunci_jawaban: ["Surabaya"],
+      pertanyaan:
+        "Pelatih mencatat hasil latihan lemparan bebas.\n\nPemain | Banyak lemparan | Lemparan masuk\nRafi | 12 | 9\nDoni | 20 | 14\n\nPemain dengan persentase masuk tertinggi adalah ....",
+      kunci_jawaban: ["Rafi"],
     },
     {
       nomor: 6,
@@ -555,7 +625,12 @@ GAMBAR (penting)
 - Kalau naskah yang diberikan SUDAH berisi penanda [[gambar:gambar-N.png]], PINDAHKAN penanda itu apa adanya ke tempat yang sesuai. Jangan ganti namanya, jangan dibuang.
 - Kalau naskah berupa Word dengan gambar tanpa penanda, beri nama gambar-1.png, gambar-2.png, ... berurutan sesuai kemunculan gambar dari atas ke bawah dokumen (urutan ini sama dengan urutan yang dipakai aplikasi saat mengambil gambar dari Word), lalu isi "catatan" soal tersebut dengan isi gambarnya, misal "gambar-4.png = grafik kecepatan".
 - Rumus matematika: tulis dengan karakter Unicode (x², √, π, ≤, ≥, ×, ÷, ½) atau <sup>/<sub>. Pecahan sederhana boleh a/b. Rumus yang terlalu rumit: jadikan penanda gambar dan beri catatan.
-- Tabel di soal: tulis baris per baris dengan pemisah " | ", atau jadikan penanda gambar bila rumit.
+TABEL (jangan jadikan gambar)
+- Tabel di stimulus/pertanyaan ditulis di dalam teks, SATU BARIS TABEL = SATU BARIS TEKS (\\n), kolom dipisah " | ".
+- Baris pertama = judul kolom. Beri baris kosong (\\n\\n) sebelum dan sesudah tabel. Aplikasi mengubahnya jadi tabel sungguhan.
+- Contoh: "Data berikut ...\\n\\nPemain | Percobaan | Masuk\\nRafi | 12 | 9\\nDoni | 20 | 14\\n\\nPemain paling akurat adalah ...."
+- Sel kosong tetap ditulis: "1 | Pernyataan A |  | ". Jangan memakai karakter | untuk keperluan lain di baris yang berdekatan.
+- Tabel isian Benar/Salah pada soal B/S bertingkat TIDAK perlu ditulis — pernyataannya masuk ke "pernyataan".
 
 FORMAT TEKS
 - Teks polos. Baris baru dengan \\n. Hanya tag <b> <i> <u> <sub> <sup> yang boleh dipakai.

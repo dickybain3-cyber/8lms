@@ -58,6 +58,15 @@ const TAG_DIIZINKAN = new Set([
   "li",
   "span",
   "img",
+  // Tabel bacaan/data (stimulus bentuk TKA, juga tabel yang ditempel dari
+  // Word). Hanya struktur; atribut yang lolos cuma colspan/rowspan angka
+  // kecil dan perataan teks.
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
 ]);
 
 /** Tag yang tidak punya penutup. */
@@ -121,6 +130,11 @@ function saringAtribut(tag: string, mentah: string): string {
     if (nama === "style") {
       const rata = /text-align\s*:\s*(left|center|right|justify)/i.exec(nilai);
       if (rata) hasil.push(` style="text-align:${rata[1].toLowerCase()}"`);
+      continue;
+    }
+
+    if ((tag === "td" || tag === "th") && (nama === "colspan" || nama === "rowspan")) {
+      if (/^([2-9]|1\d|20)$/.test(nilai)) hasil.push(` ${nama}="${nilai}"`);
       continue;
     }
 
@@ -251,11 +265,14 @@ export function htmlKeTeks(html: string | null | undefined): string {
   if (!html) return "";
   return html
     .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|ul|ol)\s*>/gi, "\n")
+    .replace(/<\/(td|th)\s*>/gi, " | ")
+    .replace(/<\/(p|div|li|ul|ol|tr|table)\s*>/gi, "\n")
     .replace(/<img\b[^>]*>/gi, " ")
     .replace(/<[^>]+>/g, "")
     .replace(/&[a-zA-Z#0-9]+;/g, (e) => ENTITY[e.toLowerCase()] ?? e)
     .replace(/[ \t\u00a0]+/g, " ")
+    // Pemisah sel terakhir tiap baris tabel tidak berguna di teks polos.
+    .replace(/ ?\| ?(?=\n|$)/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

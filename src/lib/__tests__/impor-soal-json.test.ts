@@ -12,7 +12,9 @@ import {
   bangunKonten,
   kunciGambar,
   kunciRujukan,
+  teksKeHtmlBertabel,
 } from "@/lib/impor-soal-json";
+import { bersihkanHtml } from "@/lib/html-soal";
 import { bacaDocx, xmlKeTeks } from "@/lib/docx-gambar";
 import { validasiKonten } from "@/lib/validasi-soal";
 
@@ -156,6 +158,40 @@ async function main() {
       JSON.stringify([{ tipe: "multi_benar_salah", instruksi: "x", pernyataan: [{ teks: "a", jawaban_benar: true }, { teks: "b" }] }])
     );
     assert.match(h.soal[0].galat ?? "", /pernyataan/);
+  });
+
+  await uji("baris ' | ' jadi <table> dengan judul kolom; satu baris |x| bukan tabel", () => {
+    const h = bacaJsonSoal(
+      JSON.stringify([
+        {
+          tipe: "uraian_singkat",
+          pertanyaan: "Data berikut.\n\nPemain | Lemparan | Masuk\n|---|---|---|\nRafi | 12 | 9\nDoni | 20 | <b>14</b>\n\nNilai |−5| adalah ....",
+          kunci_jawaban: ["5"],
+        },
+      ])
+    );
+    const b = bangunKonten(h.soal[0], new Map());
+    assert.ok(!("galat" in b));
+    if ("galat" in b) return;
+    const html = String(b.konten.pertanyaan_html);
+    assert.equal((html.match(/<table>/g) ?? []).length, 1, html);
+    assert.ok(html.includes("<thead><tr><th>Pemain</th><th>Lemparan</th><th>Masuk</th></tr></thead>"), html);
+    assert.ok(html.includes("<td><b>14</b></td>"), html);
+    assert.ok(!html.includes("---"), html);
+    assert.ok(html.includes("Nilai |−5| adalah"), html);
+    assert.ok(!/<br \/><table>|<\/table><br \/>/.test(html), html);
+    const teks = String(b.konten.pertanyaan);
+    assert.ok(teks.includes("Rafi | 12 | 9"), teks);
+  });
+
+  await uji("sel kosong dipad sampai jumlah kolom terbanyak", () => {
+    const html = teksKeHtmlBertabel("No | Pernyataan | Benar | Salah\n1 | Tiga dari lima |  | ");
+    assert.equal((html.match(/<td>/g) ?? []).length, 4, html);
+  });
+
+  await uji("bersihkanHtml: tabel lolos, atribut berbahaya dibuang, colspan angka saja", () => {
+    const h = bersihkanHtml('<table onclick="x()" style="position:fixed"><tr><td colspan="2" rowspan="99" onmouseover="y">a</td></tr></table>');
+    assert.equal(h, '<table><tr><td colspan="2">a</td></tr></table>');
   });
 
   await uji("bagiRataSkor total pas", () => {
