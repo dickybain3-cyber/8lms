@@ -55,6 +55,13 @@ pasangUA("Mozilla/5.0 (Linux; Android 13; wv) Chrome/120.0 Mobile Safari/537.36 
 assert.equal(diAplikasiExamSafer(), true);
 pasangUA("Mozilla/5.0 (Linux; Android 13) Chrome/120.0 Mobile Safari/537.36");
 assert.equal(diAplikasiExamSafer(), false);
+// Safe Exam Browser (labkom): UA bawaan "SEB/3.x" dan UA custom .seb.
+pasangUA("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36 SEB/3.7.1");
+assert.equal(diAplikasiExamSafer(), true);
+pasangUA("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36 ExamSaferSMPN8/seb");
+assert.equal(diAplikasiExamSafer(), true);
+pasangUA("Mozilla/5.0 (Windows NT 10.0) Chrome/124.0 Safari/537.36 WEBSEB/x");
+assert.equal(diAplikasiExamSafer(), false);
 
 type Rpc = Parameters<typeof catatPelanggaranServer>[0];
 let terakhir: { fn: string; args: Record<string, unknown> } | null = null;

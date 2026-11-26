@@ -95,7 +95,8 @@ type ElemenWebkit = HTMLElement & {
  */
 export function diAplikasiExamSafer(): boolean {
   if (typeof navigator === "undefined") return false;
-  return /ExamSaferSMPN8\//.test(navigator.userAgent);
+  // Safe Exam Browser (labkom) juga kiosk: menambahkan `SEB/<versi>` ke UA.
+  return /ExamSaferSMPN8\/|\bSEB\/\d/.test(navigator.userAgent);
 }
 
 export function dukungLayarPenuh(): boolean {
