@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { emailGuruDariUsername, emailSiswaDariUsername } from "@/lib/akun";
+import { PESAN_SISWA_DITOLAK, hostTertutupUntukSiswa } from "@/lib/host-siswa";
 import {
   JENJANG_LABEL,
   clearJenjangCookie,
@@ -42,7 +43,12 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("siswa");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // `?ditolak=siswa` = middleware baru saja mengeluarkan siswa dari domain
+  // khusus guru (lihat `host-siswa.ts`).
+  const searchParams = useSearchParams();
+  const [error, setError] = useState<string | null>(
+    searchParams.get("ditolak") === "siswa" ? PESAN_SISWA_DITOLAK : null
+  );
 
   /**
    * Tahap proses masuk, ditampilkan di layar antrian.
@@ -155,6 +161,14 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
       .maybeSingle();
 
     if (siswaRow) {
+      // Domain khusus guru: siswa tidak boleh masuk dari sini, walau
+      // username/password benar (juga bila akun siswa diketik di tab guru).
+      if (hostTertutupUntukSiswa(window.location.host)) {
+        await supabase.auth.signOut();
+        clearJenjangCookie();
+        setError(PESAN_SISWA_DITOLAK);
+        return;
+      }
       // Nama kelas hanya untuk sapaan — kegagalan di sini (RLS, relasi
       // ganda, jaringan) TIDAK boleh menggagalkan login.
       let namaKelasDb: string | undefined;
@@ -257,6 +271,10 @@ export default function LoginForm({ jenjang }: { jenjang: Jenjang }) {
     // Spasi yang ikut tersalin dari chat WhatsApp sering menempel di ujung
     // password; password siswa tidak pernah berisi spasi (lihat akun.ts).
     const password = siswaPassword.trim();
+    if (hostTertutupUntukSiswa(window.location.host)) {
+      setError(PESAN_SISWA_DITOLAK);
+      return;
+    }
     if (!siswaUsername.trim() || !password) {
       setError("Isi username dan password dari kartu login kamu.");
       return;

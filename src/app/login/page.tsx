@@ -53,7 +53,7 @@ export default function PilihKelasPage() {
                 <span className="flex-1">
                   <span className="block font-semibold text-ink">{JENJANG_LABEL[j]}</span>
                   <span className="block text-[0.75rem] text-slate-500">
-                    8lms.vercel.app{JENJANG_LOGIN_PATH[j]}
+                    Halaman masuk {JENJANG_LABEL[j]}
                   </span>
                 </span>
                 <i className="fas fa-chevron-right text-sm text-slate-400" aria-hidden />

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import LoginForm from "./LoginForm";
@@ -56,7 +57,10 @@ export default async function HalamanLogin({ jenjang }: { jenjang: Jenjang }) {
           </p>
         )}
 
-        <LoginForm jenjang={jenjang} />
+        {/* Suspense: LoginForm membaca useSearchParams (?ditolak=siswa). */}
+        <Suspense fallback={null}>
+          <LoginForm jenjang={jenjang} />
+        </Suspense>
 
         <nav
           aria-label="Halaman login kelas lain"

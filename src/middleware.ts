@@ -11,6 +11,7 @@ import {
   type SesiGuruMiddleware,
   type SesiSiswaMiddleware,
 } from "@/lib/sesi-middleware";
+import { hostTertutupUntukSiswa } from "@/lib/host-siswa";
 
 /**
  * Teruskan request ke halaman. Header sesi kiriman browser SELALU dibuang
@@ -193,6 +194,26 @@ export async function middleware(request: NextRequest) {
 
   if (isLoginPath || isRootPath) {
     return redirectKe(request, response, homePath);
+  }
+
+  // Domain khusus guru (env NEXT_PUBLIC_HOST_KHUSUS_GURU, lihat
+  // `host-siswa.ts`): siswa yang masih/terlanjur login di sini dikeluarkan
+  // (cookie sesi Supabase dihapus) dan dikembalikan ke halaman login yang
+  // menampilkan alasannya. Guru/admin tidak terpengaruh.
+  if (
+    role === "siswa" &&
+    hostTertutupUntukSiswa(
+      request.headers.get("x-forwarded-host") ?? request.headers.get("host")
+    )
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = halamanLogin;
+    url.search = "?ditolak=siswa";
+    const res = NextResponse.redirect(url);
+    for (const c of request.cookies.getAll()) {
+      if (c.name.startsWith("sb-")) res.cookies.delete(c.name);
+    }
+    return res;
   }
 
   if (role === "siswa" && isAdminPath) {
