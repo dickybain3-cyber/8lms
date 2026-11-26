@@ -664,6 +664,10 @@ body {
   width: auto;
   height: auto;
   max-height: 45svh;
+  /* Lebar dari guru (style="width:X%") mengalahkan `width: auto`.
+     Bila `max-height` ikut mengikat, kotak jadi lebar-pendek dan gambar
+     tergencet. `contain` menjaga rasio asli di dalam kotak itu. */
+  object-fit: contain;
   margin: 0.5em auto;
   border-radius: 0.5rem;
   cursor: zoom-in;
