@@ -39,6 +39,7 @@ import {
   pakaiMesinUjian,
   pakaiMesinTugas,
   pakaiMesinForum,
+  pakaiMesinTryout,
   jenisEventSiap,
   labelSiswaJenisEvent,
   DAFTAR_JENIS_EVENT,
@@ -349,7 +350,7 @@ async function testBentukCountObjekMaupunArray() {
 }
 
 function testHelperJenisEvent() {
-  assert.equal(DAFTAR_JENIS_EVENT.length, 4);
+  assert.equal(DAFTAR_JENIS_EVENT.length, 5);
 
   // `pakaiMesinUjian` sengaja TIDAK berubah artinya sejak Tahap 4: ia
   // masih menjawab "apakah kegiatan ini punya mapel & sesi ujian", karena
@@ -372,6 +373,14 @@ function testHelperJenisEvent() {
   assert.equal(pakaiMesinForum("kuis_harian"), false);
   assert.equal(pakaiMesinForum("assignment"), false);
 
+  // Tryout (0029): mesin sendiri, BUKAN mesin ujian walau subtesnya baris
+  // `mapel` — createMapel tetap menolak event tryout.
+  assert.equal(pakaiMesinTryout("tryout"), true);
+  assert.equal(pakaiMesinUjian("tryout"), false);
+  assert.equal(pakaiMesinTugas("tryout"), false);
+  assert.equal(pakaiMesinForum("tryout"), false);
+  assert.equal(pakaiMesinTryout("asesmen_akhir"), false);
+
   // Tidak ada jenis yang memakai dua mesin sekaligus — halaman detail
   // event memilih satu cabang berdasarkan ini. Sejak Tahap 5 ada TIGA
   // mesin yang harus saling eksklusif, bukan cuma dua.
@@ -380,6 +389,7 @@ function testHelperJenisEvent() {
       pakaiMesinUjian(def.value),
       pakaiMesinTugas(def.value),
       pakaiMesinForum(def.value),
+      pakaiMesinTryout(def.value),
     ].filter(Boolean).length;
     assert.equal(
       jumlahMesinAktif,
@@ -408,6 +418,7 @@ function testHelperJenisEvent() {
   assert.equal(jenisEventValid("kuis_harian"), true);
   assert.equal(jenisEventValid("assignment"), true);
   assert.equal(jenisEventValid("forum"), true);
+  assert.equal(jenisEventValid("tryout"), true);
   assert.equal(jenisEventValid("kuis-harian-typo"), false);
   assert.equal(jenisEventValid(null), false);
   assert.equal(jenisEventValid(undefined), false);

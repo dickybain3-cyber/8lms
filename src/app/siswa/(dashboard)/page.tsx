@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { getJenjangFromServerCookies } from "@/lib/jenjang-server";
 import { createClient } from "@/lib/supabase/server";
 import DashboardSiswaClient, {
   type MapelRow,
@@ -134,7 +136,26 @@ export default async function SiswaDashboardPage(
     hasilForum.error ? [] : (hasilForum.data ?? [])
   ) as unknown as ForumRow[];
 
+  // Tryout hanya untuk kelas 9 (0029): tautan ke nilai tryout.
+  const jenjang = await getJenjangFromServerCookies();
+
   return (
+    <>
+    {jenjang === 9 && (
+      <Link
+        href="/siswa/tryout"
+        className="mb-5 flex items-center gap-3 rounded-2xl border border-navy-200 bg-gradient-to-r from-navy-50 to-white px-4 py-3 shadow-sm transition-colors hover:border-navy-400"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-navy-800 text-white">
+          <i className="fas fa-flag-checkered" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold text-navy-900">Nilai Tryout</span>
+          <span className="block text-xs text-slate-500">Lihat nilai tiap paket dan grafik peningkatanmu</span>
+        </span>
+        <i className="fas fa-chevron-right text-slate-400" aria-hidden />
+      </Link>
+    )}
     <DashboardSiswaClient
       mapelList={mapelList}
       submittedByMapel={submittedByMapel}
@@ -144,5 +165,6 @@ export default async function SiswaDashboardPage(
       waktuServer={new Date().toISOString()}
       pesan={searchParams.pesan ?? null}
     />
+    </>
   );
 }

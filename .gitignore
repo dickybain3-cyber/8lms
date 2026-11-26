@@ -1,3 +1,5 @@
 .next
 node_modules
 .env*.local
+# Kartu peserta ujian (berisi password siswa) - jangan di-commit
+kartu-peserta-asas-ganjil-2026/

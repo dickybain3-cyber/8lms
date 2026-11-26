@@ -10,6 +10,7 @@ import {
   labelJenisEvent,
   type JenisEvent,
 } from "@/lib/jenis-event";
+import { buatTryout } from "@/app/admin/tryout/actions";
 
 export type ActionState = { error: string | null };
 
@@ -147,6 +148,16 @@ export async function createEvent(
   }
   if (!jenisEventValid(jenisRaw)) {
     return { error: "Pilih jenis kegiatan." };
+  }
+
+  // Tryout (0029) hanya ada di project kelas 9 dan punya halaman sendiri.
+  // Dibuat lewat jalur tryout (service_role kelas 9 + penjaga akses),
+  // bukan client cookie yang bisa saja menyasar project kelas 7/8.
+  if (jenisRaw === "tryout") {
+    if (kelasUtama !== 9) {
+      return { error: "Tryout hanya untuk kelas 9. Pilih jenjang Kelas 9." };
+    }
+    return buatTryout({ error: null }, formData);
   }
 
   const supabase = await createClient();

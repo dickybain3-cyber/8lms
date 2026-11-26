@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { getSesiGuru } from "@/lib/admin-guard";
+import LoadingNavigasi from "@/components/ui/LoadingNavigasi";
 import AdminShell from "./AdminShell";
 
 /**
@@ -23,6 +25,10 @@ export default async function AdminLayout({
       isAdmin={sesi.isAdmin}
       fotoUrl={sesi.fotoUrl}
     >
+      {/* Lapisan "Memuat…" saat pindah halaman/jenjang — menahan klik ganda. */}
+      <Suspense fallback={null}>
+        <LoadingNavigasi />
+      </Suspense>
       {children}
     </AdminShell>
   );

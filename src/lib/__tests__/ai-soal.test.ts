@@ -15,6 +15,7 @@ import {
   kontenSiapSimpan,
   normalisasiItem,
   pecahBatch,
+  potongBatch,
   totalSoal,
   validasiRencana,
   type RencanaGenerate,
@@ -104,9 +105,26 @@ uji("batch tidak melebihi batas dan isinya utuh", () => {
   assert.equal(b.reduce((n, x) => n + x.skor.reduce((a, c) => a + c, 0), 0), 100);
   assert.equal(b.reduce((n, x) => n + x.jumlahBergambar, 0), 5);
 });
-uji("batch dibagi rata (23 → 6,6,6,5)", () => {
+uji("batch dibagi rata (23 → 3×7 + 2)", () => {
   const pg = pecahBatch(rencanaContoh).filter((x) => x.tipe === "pilgan_biasa");
-  assert.deepEqual(pg.map((x) => x.jumlah), [6, 6, 6, 5]);
+  assert.deepEqual(pg.map((x) => x.jumlah), [3, 3, 3, 3, 3, 3, 3, 2]);
+});
+uji("potongBatch: dua potongan menutup batch utuh tanpa celah", () => {
+  for (const b of pecahBatch(rencanaContoh)) {
+    const p = [potongBatch(b, 0, 2), potongBatch(b, 1, 2)].filter((x) => x !== null);
+    assert.equal(p.reduce((n, x) => n + x!.jumlah, 0), b.jumlah);
+    assert.deepEqual(p.flatMap((x) => x!.skor), b.skor);
+    assert.equal(p.reduce((n, x) => n + x!.jumlahBergambar, 0), b.jumlahBergambar);
+    for (const x of p) assert.ok(x!.jumlahBergambar <= x!.jumlah);
+  }
+});
+uji("potongBatch: dari=1 batch utuh, di luar jangkauan null", () => {
+  const b = pecahBatch(rencanaContoh)[0];
+  assert.equal(potongBatch(b, 0, 1), b);
+  assert.equal(potongBatch(b, 2, 2), null);
+  assert.equal(potongBatch(b, -1, 2), null);
+  assert.equal(potongBatch(b, 0, 1.5), null);
+  assert.equal(potongBatch({ ...b, jumlah: 1, skor: [b.skor[0]], jumlahBergambar: 0 }, 0, 2), null);
 });
 
 console.log("normalisasiItem");

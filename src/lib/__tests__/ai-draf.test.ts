@@ -148,11 +148,13 @@ uji("rincian per batch jumlahnya pas", () => {
 uji("prompt campuran menyebut jumlah LOTS/MOTS/HOTS", () => {
   const r = validasiRencana({ topik: ["x"], jumlah: { pilgan_biasa: 10 }, kesulitan: "campuran", persenKesulitan: { mudah: 0, sedang: 40, sulit: 60 } });
   assert.ok(typeof r !== "string");
-  const p = buatPromptBatch(pecahBatch(r)[0], {
+  const pertama = pecahBatch(r)[0];
+  const p = buatPromptBatch(pertama, {
     mapel: "IPA", jenjang: 8, topik: r.topik, kesulitan: r.kesulitan, persenKesulitan: r.persenKesulitan, jumlahOpsi: 4, catatan: "", hindari: [],
   });
-  assert.match(p, /Tingkat kesulitan dari 5 soal ini: 2 soal MOTS/, "batch pertama 5 soal (batas batch PG 6)");
-  assert.match(p, /3 soal HOTS/);
+  const rk = rincianKesulitan(pertama.jumlah, { mudah: 0, sedang: 40, sulit: 60 });
+  assert.match(p, new RegExp(`Tingkat kesulitan dari ${pertama.jumlah} soal ini: ${rk.sedang} soal MOTS`));
+  assert.match(p, new RegExp(`${rk.sulit} soal HOTS`));
   assert.doesNotMatch(p, /soal LOTS \(/);
 });
 

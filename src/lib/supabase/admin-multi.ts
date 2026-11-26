@@ -131,6 +131,10 @@ export interface BarisMonitoring {
   checkout_status: StatusCheckout | null;
   checkout_at: string | null;
   checkout_masih_di_ruang: boolean | null;
+  /** Pelanggaran layar penuh/pindah aplikasi (migrasi 0026). 0 = tidak ada
+   *  atau migrasi belum jalan. */
+  pelanggaran_jumlah: number;
+  pelanggaran_terkunci: boolean;
 }
 
 /**
@@ -190,9 +194,30 @@ export async function monitoringSatuMapel(
 
   const baris = (data ?? []) as Omit<
     BarisMonitoring,
-    "checkout_status" | "checkout_at" | "checkout_masih_di_ruang"
+    | "checkout_status"
+    | "checkout_at"
+    | "checkout_masih_di_ruang"
+    | "pelanggaran_jumlah"
+    | "pelanggaran_terkunci"
   >[];
-  const checkout = await muatCheckoutMapel(client, mapelId);
+  const [checkout, pelanggaran] = await Promise.all([
+    muatCheckoutMapel(client, mapelId),
+    // Galat (migrasi 0026 belum jalan) = anggap tidak ada pelanggaran.
+    client
+      .from("pelanggaran_ujian")
+      .select("siswa_id, jumlah, terkunci")
+      .eq("mapel_id", mapelId)
+      .then(({ data: p, error: e }) =>
+        e
+          ? new Map<string, { jumlah: number; terkunci: boolean }>()
+          : new Map(
+              (p ?? []).map((r) => [
+                r.siswa_id as string,
+                { jumlah: r.jumlah as number, terkunci: r.terkunci as boolean },
+              ])
+            )
+      ),
+  ]);
 
   return baris.map((b) => {
     const c = checkoutSatuSiswa(
@@ -206,6 +231,8 @@ export async function monitoringSatuMapel(
       checkout_status: c.status,
       checkout_at: c.checkoutAt,
       checkout_masih_di_ruang: c.masihDiRuang,
+      pelanggaran_jumlah: pelanggaran.get(b.siswa_id)?.jumlah ?? 0,
+      pelanggaran_terkunci: pelanggaran.get(b.siswa_id)?.terkunci ?? false,
     };
   });
 }

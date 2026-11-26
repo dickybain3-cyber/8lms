@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSesiGuru } from "@/lib/admin-guard";
 import { JENJANG_LABEL, parseJenjang, type Jenjang } from "@/lib/jenjang";
@@ -22,6 +22,7 @@ import {
   pakaiMesinUjian,
   pakaiMesinTugas,
   pakaiMesinForum,
+  pakaiMesinTryout,
   type JenisEvent,
 } from "@/lib/jenis-event";
 import { faseTugas, formatTenggat } from "@/lib/tugas";
@@ -167,6 +168,9 @@ async function DetailGuru({
     ? jenisMentah
     : "asesmen_akhir";
 
+  // Tryout (0029) dikelola di halaman sendiri: paket + subtes + token.
+  if (pakaiMesinTryout(jenis)) redirect(`/admin/tryout/${event.id}`);
+
   const dampakHapus = await hitungDampakHapusEvent(event.id);
 
   // Hanya muat isi yang relevan dengan mesinnya. Event tugas tidak punya
@@ -309,6 +313,8 @@ async function DetailAdmin({
       </div>
     );
   }
+
+  if (pakaiMesinTryout(event.jenis)) redirect(`/admin/tryout/${event.id}`);
 
   const tugas = pakaiMesinTugas(event.jenis)
     ? await daftarTugasAdmin(jenjang, eventId)

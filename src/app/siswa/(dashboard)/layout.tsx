@@ -1,5 +1,7 @@
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
+import { muatBarisSiswa } from "@/lib/sesi-middleware";
+import { bacaSesiSiswaMiddleware } from "@/lib/sesi-middleware-server";
 import LogoutButton from "@/components/LogoutButton";
 import { LOGO_URL_KECIL, SEKOLAH } from "@/lib/branding";
 
@@ -16,15 +18,17 @@ export default async function SiswaDashboardLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  const { data: siswa } = await supabase
-    .from("siswa")
-    .select("nama, kelas_id")
-    .eq("auth_id", user?.id ?? "")
-    .maybeSingle();
+  // Jalur cepat: identitas siswa sudah diperiksa middleware untuk request
+  // ini (lihat `sesi-middleware.ts`) — tanpa getUser + kueri siswa ulang.
+  const dariMiddleware = await bacaSesiSiswaMiddleware();
+  let siswa = dariMiddleware?.siswa ?? null;
+  if (!dariMiddleware) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    siswa = user ? await muatBarisSiswa(supabase, user.id) : null;
+  }
 
   // Query terpisah: embed `kelas(nama)` ambigu kalau ada >1 relasi siswa↔kelas.
   const { data: kelasRow } = siswa?.kelas_id

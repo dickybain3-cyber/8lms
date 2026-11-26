@@ -7,6 +7,8 @@ import {
   buatPromptBatch,
   normalisasiItem,
   pecahBatch,
+  POTONGAN_BATCH,
+  potongBatch,
   rapikanTeks,
   skemaRespons,
   validasiRencana,
@@ -16,7 +18,10 @@ import {
 /**
  * POST /api/ai/soal — buat SATU batch draf soal.
  *
- * Body: { jenjang?, mapelId? | mapelNama?, rencana, indeksBatch, hindari?, tiket }
+ * Body: { jenjang?, mapelId? | mapelNama?, rencana, indeksBatch, potong?, hindari?, tiket }
+ *
+ * `potong` = { ke, dari }: hanya potongan ke-`ke` dari batch itu (dipakai
+ * browser saat satu batch gagal berulang). Lihat `potongBatch`.
  *
  * `tiket` = id `ai_sesi_generate` dari server action `mulaiGenerateAi`
  * (satu kuota harian). Tiap panggilan memakai satu jatah panggilan tiket.
@@ -47,8 +52,14 @@ export async function POST(req: Request) {
 
   const daftarBatch = pecahBatch(rencana);
   const indeks = Math.floor(Number(body.indeksBatch));
-  const batch = daftarBatch[indeks];
-  if (!batch) return gagal("Nomor batch di luar jangkauan.");
+  const batchUtuh = daftarBatch[indeks];
+  if (!batchUtuh) return gagal("Nomor batch di luar jangkauan.");
+  // `potong` = batch yang gagal berulang diminta per potongan (lihat potongBatch).
+  const potong = body.potong as { ke?: unknown; dari?: unknown } | undefined;
+  const dari = Number(potong?.dari ?? 1);
+  if (!(POTONGAN_BATCH as readonly number[]).includes(dari)) return gagal("Potongan batch tidak valid.");
+  const batch = potongBatch(batchUtuh, Number(potong?.ke ?? 0), dari);
+  if (!batch) return gagal("Potongan batch di luar jangkauan.");
 
   const mapelId = String(body.mapelId ?? "");
   let namaMapel: string;

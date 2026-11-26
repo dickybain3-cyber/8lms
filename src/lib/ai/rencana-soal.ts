@@ -135,16 +135,22 @@ export const TIPE_BISA_GAMBAR: TipeSoal[] = [
 export const PERSEN_GAMBAR_OTOMATIS = 0.2;
 
 /** Ukuran batch maksimal per bentuk soal (butir per panggilan AI).
- *  Lebih kecil sejak tiap soal wajib berstimulus ala TKA: keluaran per
- *  soal jauh lebih panjang, dan batch besar mendekati batas waktu 50 detik. */
+ *  Kecil sejak tiap soal wajib berstimulus ala TKA: keluaran per soal
+ *  panjang, dan batch 6 soal sering melewati batas 35 detik per percobaan
+ *  (504), sehingga guru harus mengulang sendiri. Batch kecil selesai
+ *  ±10-20 detik; jumlah panggilan yang lebih banyak diimbangi dengan
+ *  menjalankan dua batch sekaligus di browser. */
 export const BATAS_BATCH: Record<TipeSoal, number> = {
-  pilgan_biasa: 6,
-  pilgan_kompleks: 5,
-  uraian_singkat: 6,
-  benar_salah: 8,
-  multi_benar_salah: 4,
-  menjodohkan: 4,
+  pilgan_biasa: 3,
+  pilgan_kompleks: 3,
+  uraian_singkat: 4,
+  benar_salah: 5,
+  multi_benar_salah: 2,
+  menjodohkan: 2,
 };
+
+/** Pembagi yang boleh dipakai untuk memotong satu batch saat diulang. */
+export const POTONGAN_BATCH = [1, 2] as const;
 
 /** Jawaban "pertanyaan pemandu" guru — semuanya opsional. */
 export interface PemanduSoal {
@@ -446,6 +452,29 @@ export function pecahBatch(rencana: RencanaGenerate): BatchGenerate[] {
     }
   }
   return batch;
+}
+
+/**
+ * Bagian ke-`ke` (mulai 0) dari batch yang dipotong menjadi `dari` bagian.
+ * Dipakai saat batch gagal berulang: browser meminta potongannya satu per
+ * satu, server menghitung potongan yang sama dari rencana, jadi jumlah,
+ * skor, dan jatah gambar tetap tidak bisa diatur dari browser.
+ * Mengembalikan null kalau potongannya kosong atau di luar jangkauan.
+ */
+export function potongBatch(batch: BatchGenerate, ke: number, dari: number): BatchGenerate | null {
+  if (!Number.isInteger(dari) || dari < 1 || !Number.isInteger(ke) || ke < 0 || ke >= dari) return null;
+  if (dari === 1) return batch;
+  const awal = Math.floor((batch.jumlah * ke) / dari);
+  const akhir = Math.floor((batch.jumlah * (ke + 1)) / dari);
+  if (akhir <= awal) return null;
+  const gAwal = Math.floor((batch.jumlahBergambar * ke) / dari);
+  const gAkhir = Math.floor((batch.jumlahBergambar * (ke + 1)) / dari);
+  return {
+    ...batch,
+    jumlah: akhir - awal,
+    jumlahBergambar: Math.min(akhir - awal, gAkhir - gAwal),
+    skor: batch.skor.slice(awal, akhir),
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -27,6 +27,10 @@ import type { Jenjang } from "@/lib/jenjang";
 export const UMUR_TIKET_MS = 3 * 60 * 60_000;
 /** Panggilan tambahan di luar jumlah batch: untuk tombol "Ganti soal". */
 export const CADANGAN_PANGGILAN = 15;
+/** Panggilan per batch: 1 + jatah coba ulang otomatis di browser (satu
+ *  batch yang gagal bisa diulang, lalu dipotong dua dan tiap potongan
+ *  diulang lagi). Tanpa ini, coba ulang menghabiskan tiket di tengah jalan. */
+export const PANGGILAN_PER_BATCH = 4;
 
 export const PESAN_MIGRASI =
   "Fitur kuota AI belum aktif di kelas ini. Admin perlu menjalankan migrasi 0025_ai_kuota.sql.";
@@ -141,7 +145,7 @@ export async function terbitkanTiket(
       .from("ai_sesi_generate")
       .insert({
         guru_id: sesi.guruId,
-        maks_panggilan: Math.max(1, jumlahBatch) + CADANGAN_PANGGILAN,
+        maks_panggilan: Math.max(1, jumlahBatch) * PANGGILAN_PER_BATCH + CADANGAN_PANGGILAN,
         kedaluwarsa_at: new Date(Date.now() + UMUR_TIKET_MS).toISOString(),
       })
       .select("id")

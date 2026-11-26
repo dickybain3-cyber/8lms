@@ -1,6 +1,39 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createMiddlewareClient } from "@/lib/supabase/middleware";
 import { jenjangDariPathLogin, pathLogin } from "@/lib/jenjang";
+import {
+  HEADER_SESI_GURU,
+  HEADER_SESI_SISWA,
+  kodekan,
+  muatBarisGuru,
+  muatBarisSiswa,
+  tanpaHeaderSesi,
+  type SesiGuruMiddleware,
+  type SesiSiswaMiddleware,
+} from "@/lib/sesi-middleware";
+
+/**
+ * Teruskan request ke halaman. Header sesi kiriman browser SELALU dibuang
+ * dulu (anti-pemalsuan), lalu diisi ulang hanya dengan identitas yang baru
+ * saja diperiksa di sini — layout admin/siswa membacanya supaya tidak
+ * mengulang getUser + kueri peran (lihat `sesi-middleware.ts`). Cookie hasil
+ * refresh token di `response` ikut disalin, sama seperti `redirectKe`.
+ */
+function lanjut(
+  request: NextRequest,
+  response: NextResponse,
+  sesi?: { guru?: SesiGuruMiddleware; siswa?: SesiSiswaMiddleware }
+) {
+  const h = tanpaHeaderSesi(request.headers);
+  if (sesi?.guru) h.set(HEADER_SESI_GURU, kodekan(sesi.guru));
+  if (sesi?.siswa) h.set(HEADER_SESI_SISWA, kodekan(sesi.siswa));
+
+  const res = NextResponse.next({ request: { headers: h } });
+  for (const cookie of response.cookies.getAll()) {
+    res.cookies.set(cookie);
+  }
+  return res;
+}
 
 /**
  * Aturan:
@@ -68,9 +101,17 @@ export async function middleware(request: NextRequest) {
   if (
     request.method !== "GET" ||
     request.headers.has("next-action") ||
-    request.nextUrl.pathname.startsWith("/api/")
+    request.nextUrl.pathname.startsWith("/api/") ||
+    // Tryout kelas 9 (0029): publik, tanpa login Supabase. Identitas siswa
+    // dari cookie sesi tryout bertanda tangan, bukan sesi Auth — jadi tidak
+    // perlu memanggil auth.getUser() di setiap halaman tryout.
+    request.nextUrl.pathname === "/tryout" ||
+    request.nextUrl.pathname.startsWith("/tryout/")
   ) {
-    return NextResponse.next();
+    // Tetap tanpa kueri, tetapi header sesi palsu dari browser dibuang.
+    return NextResponse.next({
+      request: { headers: tanpaHeaderSesi(request.headers) },
+    });
   }
 
   const { supabase, response, jenjang } = createMiddlewareClient(request);
@@ -94,7 +135,7 @@ export async function middleware(request: NextRequest) {
     if (isAdminPath || isSiswaPath) {
       return redirectKe(request, response, halamanLogin);
     }
-    return response;
+    return lanjut(request, response);
   }
 
   const {
@@ -105,27 +146,24 @@ export async function middleware(request: NextRequest) {
     if (isAdminPath || isSiswaPath) {
       return redirectKe(request, response, halamanLogin);
     }
-    return response;
+    return lanjut(request, response);
   }
 
-  // User sudah login — tentukan role sekali di sini.
+  // User sudah login — tentukan role sekali di sini. Kedua kueri berjalan
+  // BERSAMAAN (satu round-trip, bukan dua berurutan). Urutan prioritas
+  // tetap seperti dulu: punya baris guru -> admin, walau juga punya baris
+  // siswa. Barisnya dimuat lengkap supaya layout tidak perlu mengulang.
   let role: "admin" | "siswa" | null = null;
 
-  const { data: guruRow } = await supabase
-    .from("guru")
-    .select("id")
-    .eq("auth_id", user.id)
-    .maybeSingle();
+  const [guruRow, siswaRow] = await Promise.all([
+    muatBarisGuru(supabase, user.id),
+    muatBarisSiswa(supabase, user.id),
+  ]);
 
   if (guruRow) {
     role = "admin";
-  } else {
-    const { data: siswaRow } = await supabase
-      .from("siswa")
-      .select("id")
-      .eq("auth_id", user.id)
-      .maybeSingle();
-    if (siswaRow) role = "siswa";
+  } else if (siswaRow) {
+    role = "siswa";
   }
 
   if (!role) {
@@ -140,7 +178,7 @@ export async function middleware(request: NextRequest) {
     // konteksnya masih lengkap: tahu jenjang mana yang barusan dipilih).
     // Tidak ada risiko loop: di /login role tetap null, tapi cabang ini
     // hanya memulangkan `response` biasa untuk path /login.
-    if (isLoginPath) return response;
+    if (isLoginPath) return lanjut(request, response);
     return redirectKe(request, response, halamanLogin);
   }
 
@@ -150,7 +188,7 @@ export async function middleware(request: NextRequest) {
   // login B (halaman itu memberi tahu sesi A akan ditutup), jangan
   // dilempar ke dashboard A.
   if (jenjangPathLogin !== null && jenjangPathLogin !== jenjang) {
-    return response;
+    return lanjut(request, response);
   }
 
   if (isLoginPath || isRootPath) {
@@ -165,7 +203,16 @@ export async function middleware(request: NextRequest) {
     return redirectKe(request, response, "/admin");
   }
 
-  return response;
+  return lanjut(request, response, {
+    guru:
+      role === "admin" && guruRow
+        ? { authId: user.id, email: user.email ?? null, guru: guruRow }
+        : undefined,
+    siswa:
+      role === "siswa" && siswaRow
+        ? { authId: user.id, siswa: siswaRow }
+        : undefined,
+  });
 }
 
 export const config = {

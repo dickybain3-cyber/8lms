@@ -81,8 +81,22 @@ Batch diperkecil (PG 6/panggilan) karena keluaran per soal lebih panjang:
 - Admin melihat notifikasi di **Dashboard** (ketiga jenjang): Setujui = +1
   kali untuk hari itu, Tolak = tetap habis.
 - Satu kuota = satu tiket (`ai_sesi_generate`): berlaku 3 jam, jumlah
-  panggilan = jumlah batch + 15 (untuk tombol "Ganti"). Route
-  `/api/ai/soal` menolak panggilan tanpa tiket yang sah.
+  panggilan = jumlah batch × 4 (coba ulang otomatis) + 15 (untuk tombol
+  "Ganti"). Route `/api/ai/soal` menolak panggilan tanpa tiket yang sah.
+
+### Batch dan coba ulang otomatis
+
+- Batch kecil (`BATAS_BATCH`: PG 3, PG kompleks 3, uraian 4, B/S 5,
+  B/S bertingkat 2, menjodohkan 2) supaya tiap panggilan selesai jauh di
+  bawah batas 35 detik. 50 soal PG = 17 batch.
+- Browser menjalankan **2 batch bersamaan** (`BATCH_BERSAMAAN`).
+- Gangguan sementara (503/504, limit per menit, jaringan, JSON terpotong)
+  diulang sendiri: batch utuh 2 kali, lalu dipotong dua dan tiap potongan
+  dicoba 3 kali. Guru hanya melihat "mencoba lagi dalam N detik".
+- Potongan dihitung ulang di server (`potongBatch`), jadi jumlah, skor,
+  dan jatah gambar tetap tidak bisa diatur dari browser.
+- Tombol "Ulangi batch gagal" tetap ada untuk sisa yang gagal setelah
+  semua percobaan (mis. semua kunci kena limit harian).
 - Tabel kuota RLS tanpa policy (service_role saja). Migrasi belum jalan →
   guru biasa ditolak dengan pesan yang menyebut 0025; admin tetap bisa.
 

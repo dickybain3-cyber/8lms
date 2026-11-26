@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { REAKSI_TERSEDIA } from "@/lib/forum";
+import { REAKSI_TERSEDIA, type KelompokReaksi } from "@/lib/forum";
+
+export type { BarisReaksi, KelompokReaksi } from "@/lib/forum";
 
 /**
  * Reaksi emoji guru pada bubble (Part 6).
@@ -17,38 +19,6 @@ import { REAKSI_TERSEDIA } from "@/lib/forum";
 // ---------------------------------------------------------------------------
 // Lencana (baca saja)
 // ---------------------------------------------------------------------------
-
-export interface BarisReaksi {
-  pesan_id: string;
-  guru_id: string;
-  emoji: string;
-}
-
-export interface KelompokReaksi {
-  emoji: string;
-  jumlah: number;
-  /** true kalau guru yang sedang login ikut memberi emoji ini. */
-  olehSaya: boolean;
-}
-
-/** Kelompokkan baris `forum_reaksi` satu pesan menjadi emoji + jumlah,
- *  urut sesuai `REAKSI_TERSEDIA`. `guruIdSaya` = null di sisi siswa. */
-export function kelompokkanReaksi(
-  baris: BarisReaksi[],
-  guruIdSaya: string | null = null
-): KelompokReaksi[] {
-  const peta = new Map<string, KelompokReaksi>();
-  for (const b of baris) {
-    const k = peta.get(b.emoji) ?? { emoji: b.emoji, jumlah: 0, olehSaya: false };
-    k.jumlah += 1;
-    if (guruIdSaya && b.guru_id === guruIdSaya) k.olehSaya = true;
-    peta.set(b.emoji, k);
-  }
-  const urutan = REAKSI_TERSEDIA as readonly string[];
-  return [...peta.values()].sort(
-    (a, b) => urutan.indexOf(a.emoji) - urutan.indexOf(b.emoji)
-  );
-}
 
 export function LencanaReaksi({ kelompok }: { kelompok: KelompokReaksi[] }) {
   if (kelompok.length === 0) return null;

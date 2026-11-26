@@ -166,11 +166,37 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
     if (error) galat.push(`${label}: ${error.message}`);
   };
 
-  const { data: mapel, error: errMapel } = await supabase
-    .from("mapel")
-    .select("id, nama, event(nama, tgl_mulai)")
-    .eq("id", mapelId)
-    .maybeSingle();
+  // Semua kueri yang hanya butuh `mapelId` dijalankan BERSAMAAN (dulu 8
+  // round-trip berurutan; sekarang 2 putaran: ini, lalu siswa+kelas).
+  const [
+    { data: mapel, error: errMapel },
+    { data: soalData, error: errSoal },
+    { data: mapelKelas, error: errMapelKelas },
+    { data: jawabanList, error: errJawaban },
+    checkout,
+    { data: nilaiList, error: errNilai },
+  ] = await Promise.all([
+    supabase
+      .from("mapel")
+      .select("id, nama, event(nama, tgl_mulai)")
+      .eq("id", mapelId)
+      .maybeSingle(),
+    supabase
+      .from("soal")
+      .select("id, urutan, skor")
+      .eq("mapel_id", mapelId)
+      .order("urutan"),
+    supabase.from("mapel_kelas").select("kelas_id").eq("mapel_id", mapelId),
+    supabase
+      .from("jawaban_siswa")
+      .select("siswa_id, submitted_at, mulai_at")
+      .eq("mapel_id", mapelId),
+    muatCheckoutMapel(supabase, mapelId),
+    supabase
+      .from("nilai")
+      .select("siswa_id, total_skor, detail_jsonb, is_override")
+      .eq("mapel_id", mapelId),
+  ]);
   catatGalat("mapel", errMapel);
 
   if (!mapel) {
@@ -203,11 +229,6 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
     eventInfo?.tgl_mulai ?? new Date().toISOString()
   );
 
-  const { data: soalData, error: errSoal } = await supabase
-    .from("soal")
-    .select("id, urutan, skor")
-    .eq("mapel_id", mapelId)
-    .order("urutan");
   catatGalat("soal", errSoal);
 
   const soalList: SoalRingkas[] = (soalData ?? []).map((s) => ({
@@ -216,47 +237,37 @@ async function DetailNilaiMapel({ mapelId }: { mapelId: string }) {
     skor: Number(s.skor),
   }));
 
-  const { data: mapelKelas, error: errMapelKelas } = await supabase
-    .from("mapel_kelas")
-    .select("kelas_id")
-    .eq("mapel_id", mapelId);
   catatGalat("mapel_kelas", errMapelKelas);
 
   const kelasIds = (mapelKelas ?? []).map((mk) => mk.kelas_id);
 
-  const { data: siswaList, error: errSiswa } =
+  // Nama kelas lewat kueri terpisah — embed `kelas(nama)` ditolak kalau
+  // ada lebih dari satu relasi antara `siswa` dan `kelas`. Keduanya
+  // bersamaan.
+  const [
+    { data: siswaList, error: errSiswa },
+    { data: kelasData, error: errKelas },
+  ] =
     kelasIds.length > 0
-      ? await supabase
-          .from("siswa")
-          .select("id, nama, username, kelas_id")
-          .in("kelas_id", kelasIds)
-          .order("nama")
-      : { data: [] as never[], error: null };
+      ? await Promise.all([
+          supabase
+            .from("siswa")
+            .select("id, nama, username, kelas_id")
+            .in("kelas_id", kelasIds)
+            .order("nama"),
+          supabase.from("kelas").select("id, nama").in("id", kelasIds),
+        ])
+      : [
+          { data: [] as never[], error: null },
+          { data: [] as never[], error: null },
+        ];
   catatGalat("siswa", errSiswa);
-
-  // Query terpisah untuk nama kelas — embed `kelas(nama)` ditolak kalau
-  // ada lebih dari satu relasi antara `siswa` dan `kelas`.
-  const { data: kelasData, error: errKelas } =
-    kelasIds.length > 0
-      ? await supabase.from("kelas").select("id, nama").in("id", kelasIds)
-      : { data: [] as never[], error: null };
   catatGalat("kelas", errKelas);
   const kelasNamaMap = new Map(
     (kelasData ?? []).map((k: { id: string; nama: string }) => [k.id, k.nama])
   );
 
-  const { data: jawabanList, error: errJawaban } = await supabase
-    .from("jawaban_siswa")
-    .select("siswa_id, submitted_at, mulai_at")
-    .eq("mapel_id", mapelId);
   catatGalat("jawaban_siswa", errJawaban);
-
-  const checkout = await muatCheckoutMapel(supabase, mapelId);
-
-  const { data: nilaiList, error: errNilai } = await supabase
-    .from("nilai")
-    .select("siswa_id, total_skor, detail_jsonb, is_override")
-    .eq("mapel_id", mapelId);
   catatGalat("nilai", errNilai);
 
   const submittedMap = new Map(

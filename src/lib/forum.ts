@@ -136,6 +136,40 @@ export const REAKSI_TERSEDIA = ["👍", "❤️", "😂", "🎉", "👏", "🤔"
 
 export type EmojiReaksi = (typeof REAKSI_TERSEDIA)[number];
 
+export interface BarisReaksi {
+  pesan_id: string;
+  guru_id: string;
+  emoji: string;
+}
+
+export interface KelompokReaksi {
+  emoji: string;
+  jumlah: number;
+  /** true kalau guru yang sedang login ikut memberi emoji ini. */
+  olehSaya: boolean;
+}
+
+/** Kelompokkan baris `forum_reaksi` satu pesan menjadi emoji + jumlah,
+ *  urut sesuai `REAKSI_TERSEDIA`. `guruIdSaya` = null di sisi siswa.
+ *  Di sini, bukan di ReaksiPesan.tsx: halaman server memanggilnya, dan
+ *  fungsi dari berkas "use client" tidak bisa dipanggil dari server. */
+export function kelompokkanReaksi(
+  baris: BarisReaksi[],
+  guruIdSaya: string | null = null
+): KelompokReaksi[] {
+  const peta = new Map<string, KelompokReaksi>();
+  for (const b of baris) {
+    const k = peta.get(b.emoji) ?? { emoji: b.emoji, jumlah: 0, olehSaya: false };
+    k.jumlah += 1;
+    if (guruIdSaya && b.guru_id === guruIdSaya) k.olehSaya = true;
+    peta.set(b.emoji, k);
+  }
+  const urutan = REAKSI_TERSEDIA as readonly string[];
+  return [...peta.values()].sort(
+    (a, b) => urutan.indexOf(a.emoji) - urutan.indexOf(b.emoji)
+  );
+}
+
 /**
  * ── VALIDASI PESAN YANG DIPAKAI SERVER ACTION (Part 4) ──
  *

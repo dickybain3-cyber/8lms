@@ -19,10 +19,22 @@ import {
 import {
   AMBANG_MENINGGALKAN_MS,
   BATAS_PERINGATAN,
-  KODE_BUKA_KUNCI,
+  LABEL_PELANGGARAN,
+  MENIT_KODE_PENGAMAN,
   bacaPelanggaranLokal,
   simpanPelanggaranLokal,
   hapusPelanggaranLokal,
+  bacaPelanggaranServer,
+  catatPelanggaranServer,
+  bukaKunciServer,
+  diAplikasiExamSafer,
+  dukungLayarPenuh,
+  sedangLayarPenuh,
+  masukLayarPenuh,
+  keluarLayarPenuh,
+  terlihatLayarTerbagi,
+  type HasilBukaKunci,
+  type JenisPelanggaran,
 } from "@/lib/pengawasan-ujian";
 import {
   unduhPaketSoal,
@@ -157,7 +169,18 @@ export default function ExamClient({
    *  perlu ditampilkan saat ini. Terpisah dari `terkunci` karena gerbang
    *  kode (pelanggaran ke-3 dst) adalah modal yang BEDA — tidak bisa
    *  ditutup cuma dengan OK. */
-  const [peringatanBaru, setPeringatanBaru] = useState<number | null>(null);
+  const [peringatanBaru, setPeringatanBaru] = useState<{
+    nomor: number;
+    jenis: JenisPelanggaran;
+  } | null>(null);
+  /** Layar penuh wajib selama ujian, kecuali browser tidak mendukungnya
+   *  (iPhone Safari) atau menolak permintaannya. */
+  const [layarPenuhDidukung, setLayarPenuhDidukung] = useState(false);
+  const [layarPenuh, setLayarPenuh] = useState(false);
+  /** true = satu pelanggaran sudah dicatat dan siswa belum kembali ke
+   *  keadaan aman. Mencegah satu kejadian (mis. split screen = keluar
+   *  layar penuh + blur + resize) dihitung tiga kali. */
+  const sedangMelanggarRef = useRef(false);
 
   // --- Waktu (baru) ---
   const [deadlineMs, setDeadlineMs] = useState<number | null>(null);
@@ -349,6 +372,9 @@ export default function ExamClient({
   async function tekanMulai() {
     setMemulai(true);
     setErrorMulai(null);
+    // Paling awal, sebelum menunggu unduhan: browser hanya mengizinkan
+    // layar penuh sesaat setelah ketukan siswa.
+    await mintaLayarPenuh();
 
     if (soalList.length > 0) {
       setUnduhan({ fase: "mengunduh", selesai: 0, total: 0 });
@@ -466,11 +492,29 @@ export default function ExamClient({
   // Sekali saat mount, sebelum efek deteksi di bawah mulai berjalan —
   // supaya siswa yang me-refresh setelah dikunci TETAP terkunci begitu
   // halaman terbuka kembali, bukan menunggu pelanggaran baru dulu.
+  // Server dulu (tabel `pelanggaran_ujian`, migrasi 0026): hapus data
+  // browser atau pindah HP tidak membuka kunci. localStorage hanya cadangan
+  // saat offline.
   useEffect(() => {
     if (readOnly) return;
     const awal = bacaPelanggaranLokal(siswaId, mapel.id);
     setJumlahPelanggaran(awal.jumlah);
     setTerkunci(awal.terkunci);
+    let batal = false;
+    void bacaPelanggaranServer(createClient(), siswaId, mapel.id).then((srv) => {
+      if (batal || !srv) return;
+      const jumlah = Math.max(srv.jumlah, awal.jumlah);
+      // Server tidak terkunci = kunci sudah dibuka dengan kode (mungkin di
+      // perangkat lain). Kunci lokal hanya menang kalau hitungan lokalnya
+      // lebih tinggi (tercatat saat offline).
+      const kunci = srv.terkunci || (awal.terkunci && awal.jumlah > srv.jumlah);
+      setJumlahPelanggaran(jumlah);
+      setTerkunci(kunci);
+      simpanPelanggaranLokal(siswaId, mapel.id, { jumlah, terkunci: kunci });
+    });
+    return () => {
+      batal = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readOnly]);
 
@@ -484,19 +528,62 @@ export default function ExamClient({
    * bergantung pada `jumlahPelanggaran` dari closure efek yang mungkin
    * sudah basi kalau beberapa pelanggaran terjadi berdekatan.
    */
-  const catatPelanggaran = useCallback(() => {
-    setJumlahPelanggaran((n) => {
-      const next = n + 1;
-      const kunci = next >= BATAS_PERINGATAN;
-      simpanPelanggaranLokal(siswaId, mapel.id, { jumlah: next, terkunci: kunci });
-      if (kunci) {
-        setTerkunci(true);
-      } else {
-        setPeringatanBaru(next);
-      }
-      return next;
-    });
-  }, [siswaId, mapel.id]);
+  const catatPelanggaran = useCallback(
+    (jenis: JenisPelanggaran) => {
+      if (sedangMelanggarRef.current) return;
+      sedangMelanggarRef.current = true;
+
+      // Hitungan lokal dulu supaya peringatan tampil seketika walau sinyal
+      // lambat, lalu disamakan dengan jawaban server (sumber kebenaran).
+      setJumlahPelanggaran((n) => {
+        const next = n + 1;
+        const kunci = next >= BATAS_PERINGATAN;
+        simpanPelanggaranLokal(siswaId, mapel.id, { jumlah: next, terkunci: kunci });
+        if (kunci) {
+          setTerkunci(true);
+        } else {
+          setPeringatanBaru({ nomor: next, jenis });
+        }
+        return next;
+      });
+
+      void catatPelanggaranServer(createClient(), mapel.id, jenis).then((srv) => {
+        if (!srv) return;
+        setJumlahPelanggaran(srv.jumlah);
+        simpanPelanggaranLokal(siswaId, mapel.id, srv);
+        if (srv.terkunci) {
+          setTerkunci(true);
+          setPeringatanBaru(null);
+        }
+      });
+    },
+    [siswaId, mapel.id]
+  );
+
+  // -------------------------------------------------------------------------
+  // Pengawasan — layar penuh
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    setLayarPenuhDidukung(dukungLayarPenuh());
+    setLayarPenuh(sedangLayarPenuh());
+    const onUbah = () => setLayarPenuh(sedangLayarPenuh());
+    document.addEventListener("fullscreenchange", onUbah);
+    document.addEventListener("webkitfullscreenchange", onUbah);
+    return () => {
+      document.removeEventListener("fullscreenchange", onUbah);
+      document.removeEventListener("webkitfullscreenchange", onUbah);
+    };
+  }, []);
+
+  /** Dari tombol (ketukan siswa). Browser yang menolak tidak dipaksa:
+   *  pengawasan lanjut dengan deteksi pindah aplikasi + layar terbagi. */
+  async function mintaLayarPenuh() {
+    const ok = await masukLayarPenuh();
+    if (!ok) setLayarPenuhDidukung(false);
+  }
+
+  const ujianBerjalan = !readOnly && deadlineMs !== null;
+  const wajibLayarPenuh = ujianBerjalan && layarPenuhDidukung;
 
   // -------------------------------------------------------------------------
   // Pengawasan — deteksi keluar halaman (baru)
@@ -516,7 +603,7 @@ export default function ExamClient({
   // memicu blur DAN visibilitychange sekaligus) aman karena
   // `mulaiAway`/`selesaiAway` idempoten (lihat pengaman `sedangAway`).
   useEffect(() => {
-    if (readOnly || terkunci) return;
+    if (!ujianBerjalan || terkunci) return;
 
     let sedangAway = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -537,7 +624,7 @@ export default function ExamClient({
       timer = setTimeout(() => {
         sedangAway = false;
         timer = null;
-        if (!masihDiHalaman()) catatPelanggaran();
+        if (!masihDiHalaman()) catatPelanggaran("pindah_aplikasi");
       }, AMBANG_MENINGGALKAN_MS);
     }
 
@@ -552,9 +639,68 @@ export default function ExamClient({
       sedangAway = false;
     }
 
+    // Layar terbagi: hanya di HP/tablet (di laptop jendela yang tidak
+    // dimaksimalkan itu wajar).
+    // ExamSafer menangkap layar terbagi sendiri (isInMultiWindowMode).
+    const hpAtauTablet =
+      !diAplikasiExamSafer() &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: coarse)").matches;
+
+    function layarTerbagi() {
+      const el = document.activeElement;
+      return terlihatLayarTerbagi({
+        lebarJendela: window.innerWidth,
+        tinggiJendela: window.innerHeight,
+        lebarLayar: window.screen.width,
+        tinggiLayar: window.screen.height,
+        sedangMengetik:
+          el instanceof HTMLInputElement ||
+          el instanceof HTMLTextAreaElement ||
+          (el instanceof HTMLElement && el.isContentEditable),
+      });
+    }
+
+    /** Kembali aman = pelanggaran berikutnya boleh dihitung lagi. */
+    function cekAman() {
+      if (!masihDiHalaman()) return;
+      if (layarPenuhDidukung && !sedangLayarPenuh()) return;
+      if (hpAtauTablet && layarTerbagi()) return;
+      sedangMelanggarRef.current = false;
+    }
+
     function onVisibility() {
       if (document.visibilityState === "hidden") mulaiAway();
-      else selesaiAway();
+      else {
+        selesaiAway();
+        cekAman();
+      }
+    }
+
+    // Keluar layar penuh dihitung seketika. Tombol kembali, gestur usap,
+    // dan masuk split screen di Android semuanya keluar lewat sini.
+    function onLayarPenuh() {
+      if (!layarPenuhDidukung) return;
+      if (sedangLayarPenuh()) cekAman();
+      else catatPelanggaran("keluar_layar_penuh");
+    }
+
+    // Ditunda 1,5 detik: memutar layar juga memicu resize sesaat dengan
+    // ukuran yang belum final.
+    let timerResize: ReturnType<typeof setTimeout> | null = null;
+    function onResize() {
+      if (!hpAtauTablet) return;
+      if (timerResize) clearTimeout(timerResize);
+      timerResize = setTimeout(() => {
+        timerResize = null;
+        if (layarTerbagi()) catatPelanggaran("layar_terbagi");
+        else cekAman();
+      }, 1500);
+    }
+
+    function onKembali() {
+      selesaiAway();
+      cekAman();
     }
 
     // Siswa menyentuh/mengetik di halaman = jelas tidak pergi, walaupun
@@ -562,24 +708,36 @@ export default function ExamClient({
     const AKTIVITAS = ["pointerdown", "touchstart", "keydown"] as const;
 
     document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("fullscreenchange", onLayarPenuh);
+    document.addEventListener("webkitfullscreenchange", onLayarPenuh);
+    window.addEventListener("resize", onResize);
     window.addEventListener("blur", mulaiAway);
-    window.addEventListener("focus", selesaiAway);
-    AKTIVITAS.forEach((e) => document.addEventListener(e, selesaiAway, { passive: true }));
+    window.addEventListener("focus", onKembali);
+    AKTIVITAS.forEach((e) => document.addEventListener(e, onKembali, { passive: true }));
+
+    // Sudah terbagi sejak halaman dibuka (ujian dibuka langsung di split).
+    onResize();
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("fullscreenchange", onLayarPenuh);
+      document.removeEventListener("webkitfullscreenchange", onLayarPenuh);
+      window.removeEventListener("resize", onResize);
       window.removeEventListener("blur", mulaiAway);
-      window.removeEventListener("focus", selesaiAway);
-      AKTIVITAS.forEach((e) => document.removeEventListener(e, selesaiAway));
+      window.removeEventListener("focus", onKembali);
+      AKTIVITAS.forEach((e) => document.removeEventListener(e, onKembali));
       if (timer) clearTimeout(timer);
+      if (timerResize) clearTimeout(timerResize);
     };
-  }, [readOnly, terkunci, catatPelanggaran]);
+  }, [ujianBerjalan, terkunci, layarPenuhDidukung, catatPelanggaran]);
 
-  /** Dipanggil dari gerbang kode. `null` = kode salah (tetap terkunci,
-   *  modalnya sendiri yang menampilkan pesan galat). */
-  function cobaBukaKunci(kode: string): boolean {
-    if (kode.trim() !== KODE_BUKA_KUNCI) return false;
+  /** Dipanggil dari gerbang kode. Kode diperiksa di server (RPC
+   *  `buka_kunci_pelanggaran`); kalau gagal, modalnya menampilkan pesannya. */
+  async function cobaBukaKunci(kode: string): Promise<HasilBukaKunci> {
+    const hasil = await bukaKunciServer(createClient(), mapel.id, kode);
+    if (!hasil.ok) return hasil;
     setTerkunci(false);
+    sedangMelanggarRef.current = false;
     // `jumlah` TETAP disimpan apa adanya (riwayat), cuma `terkunci` yang
     // berubah — supaya pelanggaran berikutnya langsung mengunci lagi
     // tanpa "reset" ke 0, sesuai maksud "setelah peringatan ketiga harus
@@ -588,7 +746,10 @@ export default function ExamClient({
       jumlah: jumlahPelanggaran,
       terkunci: false,
     });
-    return true;
+    // Masih dalam rangkaian ketukan Buka Kunci. Kalau browser tetap
+    // menolak, layar "Kembali ke layar penuh" yang memintanya.
+    if (layarPenuhDidukung) void masukLayarPenuh();
+    return hasil;
   }
 
   // -------------------------------------------------------------------------
@@ -661,6 +822,7 @@ export default function ExamClient({
       // ujian ini sudah selesai, tidak ada lagi yang perlu diawasi.
       hapusPelanggaranLokal(siswaId, mapel.id);
       setSubmittedAt(now);
+      void keluarLayarPenuh();
 
       // Setelah terkumpul, siswa SELALU dikembalikan ke dashboard — baik
       // pengumpulan otomatis karena waktu habis maupun yang dia tekan
@@ -805,6 +967,12 @@ export default function ExamClient({
               • Menutup halaman tidak menghentikan waktu — buka kembali lewat
               dashboard untuk melanjutkan.
             </li>
+            <li className="font-semibold text-danger">
+              • Ujian berjalan dalam layar penuh. Keluar dari layar penuh,
+              pindah aplikasi, atau membagi layar dicatat sebagai pelanggaran.
+              Pelanggaran ke-{BATAS_PERINGATAN} mengunci ujian sampai kamu
+              memasukkan kode dari admin.
+            </li>
           </ul>
 
           {errorMulai && (
@@ -887,7 +1055,7 @@ export default function ExamClient({
           <div className="flex items-center gap-3">
             {!readOnly && jumlahPelanggaran > 0 && (
               <span
-                title="Kamu terpantau meninggalkan halaman ujian selama 10 detik atau lebih"
+                title="Jumlah pelanggaran: keluar layar penuh, pindah aplikasi, atau membagi layar"
                 className="rounded-full bg-danger/10 px-2.5 py-1 text-xs font-bold text-danger"
               >
                 <i className="fas fa-triangle-exclamation mr-1" aria-hidden />
@@ -1112,10 +1280,18 @@ export default function ExamClient({
   />
 )}
 
+{wajibLayarPenuh && !layarPenuh && !terkunci && peringatanBaru === null && (
+  <LayarPenuhWajib onMasuk={() => void mintaLayarPenuh()} />
+)}
+
 {peringatanBaru !== null && !terkunci && (
   <ModalPeringatanKeluar
-    nomor={peringatanBaru}
-    onTutup={() => setPeringatanBaru(null)}
+    nomor={peringatanBaru.nomor}
+    jenis={peringatanBaru.jenis}
+    onTutup={() => {
+      setPeringatanBaru(null);
+      if (wajibLayarPenuh) void mintaLayarPenuh();
+    }}
   />
 )}
 
@@ -1383,9 +1559,11 @@ function DialogPengumpulan({
  */
 function ModalPeringatanKeluar({
   nomor,
+  jenis,
   onTutup,
 }: {
   nomor: number;
+  jenis: JenisPelanggaran;
   onTutup: () => void;
 }) {
   const sisa = BATAS_PERINGATAN - nomor;
@@ -1407,16 +1585,16 @@ function ModalPeringatanKeluar({
           Peringatan {nomor} dari {BATAS_PERINGATAN}
         </h2>
         <p className="mb-5 text-sm leading-relaxed text-ink/70">
-          Kamu terpantau meninggalkan halaman ujian ini (pindah tab, pindah
-          aplikasi, atau meminimalkan jendela) selama 10 detik atau lebih.
+          Kamu terpantau <strong>{LABEL_PELANGGARAN[jenis]}</strong> saat ujian
+          berlangsung. Pelanggaran ini sudah tercatat.
           {sisa > 0 ? (
             <>
               {" "}
               Kalau ini terjadi {sisa} kali lagi, ujian akan dikunci dan kamu
-              harus meminta kode dari pengawas untuk melanjutkan.
+              harus meminta kode pengaman dari admin untuk melanjutkan.
             </>
           ) : (
-            " Ini peringatan terakhir sebelum ujian dikunci."
+            " Pelanggaran berikutnya akan mengunci ujian."
           )}
         </p>
         <button
@@ -1442,16 +1620,21 @@ function ModalPeringatanKeluar({
 function GerbangKodePelanggaran({
   onCoba,
 }: {
-  onCoba: (kode: string) => boolean;
+  onCoba: (kode: string) => Promise<HasilBukaKunci>;
 }) {
   const [kode, setKode] = useState("");
-  const [salah, setSalah] = useState(false);
+  const [galat, setGalat] = useState<string | null>(null);
+  const [memeriksa, setMemeriksa] = useState(false);
+  const salah = galat !== null;
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const ok = onCoba(kode);
-    if (!ok) {
-      setSalah(true);
+    if (memeriksa) return;
+    setMemeriksa(true);
+    const hasil = await onCoba(kode);
+    setMemeriksa(false);
+    if (!hasil.ok) {
+      setGalat(hasil.pesan);
       setKode("");
     }
   }
@@ -1471,40 +1654,80 @@ function GerbangKodePelanggaran({
           Ujian dikunci
         </h2>
         <p className="mb-4 text-sm leading-relaxed text-ink/70">
-          Kamu sudah {BATAS_PERINGATAN} kali terpantau meninggalkan halaman
-          ujian. Untuk melanjutkan, minta kode dari pengawas ruangan dan
-          masukkan di bawah ini.
+          Kamu sudah {BATAS_PERINGATAN} kali atau lebih melanggar aturan
+          ujian (keluar layar penuh, pindah aplikasi, atau membagi layar).
+          Minta <strong>kode pengaman</strong> ke admin dan masukkan di bawah
+          ini. Kode berganti tiap {MENIT_KODE_PENGAMAN} menit, jadi pakai kode
+          yang terbaru.
         </p>
-        <form onSubmit={submit}>
+        <form onSubmit={(e) => void submit(e)}>
           <input
             type="text"
-            inputMode="text"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={6}
             autoFocus
             value={kode}
             onChange={(e) => {
-              setKode(e.target.value);
-              setSalah(false);
+              setKode(e.target.value.replace(/\D/g, ""));
+              setGalat(null);
             }}
-            placeholder="Kode dari pengawas"
-            className={`mb-1 h-12 w-full rounded-xl border px-3.5 text-center text-sm tracking-wide outline-none ${
+            placeholder="6 angka"
+            className={`mb-1 h-12 w-full rounded-xl border px-3.5 text-center text-lg font-bold tracking-[0.4em] outline-none ${
               salah ? "border-danger" : "border-ink/15 focus:border-gold"
             }`}
           />
           {salah && (
-            <p className="mb-3 text-xs font-medium text-danger">
-              Kode salah. Tanyakan lagi ke pengawas ruangan.
-            </p>
+            <p className="mb-3 text-xs font-medium text-danger">{galat}</p>
           )}
           <button
             type="submit"
-            disabled={kode.trim().length === 0}
+            disabled={kode.length !== 6 || memeriksa}
             className={`h-12 w-full rounded-xl bg-ink text-sm font-bold text-paper transition-colors active:bg-ink-light disabled:opacity-50 touch-manipulation ${
               salah ? "mt-0" : "mt-3"
             }`}
           >
-            Buka Kunci
+            {memeriksa ? "Memeriksa…" : "Buka Kunci"}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Penutup soal selama ujian tidak dalam layar penuh. Muncul saat ujian
+ * dilanjutkan setelah halaman dimuat ulang, dan setelah peringatan/kunci
+ * kalau browser belum kembali ke layar penuh. Layar penuh hanya bisa
+ * diminta dari ketukan, karena itu harus lewat tombol.
+ */
+function LayarPenuhWajib({ onMasuk }: { onMasuk: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[35] flex items-center justify-center bg-ink/90 p-4">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="judul-layar-penuh"
+        className="w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-xl"
+      >
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-teal/10">
+          <i className="fas fa-expand text-xl text-teal" aria-hidden />
+        </div>
+        <h2 id="judul-layar-penuh" className="mb-2 font-serif text-lg font-bold text-ink">
+          Ujian harus layar penuh
+        </h2>
+        <p className="mb-5 text-sm leading-relaxed text-ink/70">
+          Tekan tombol di bawah untuk melanjutkan. Waktu ujian tetap berjalan.
+          Jangan keluar dari layar penuh, pindah aplikasi, atau membagi layar.
+        </p>
+        <button
+          type="button"
+          onClick={onMasuk}
+          autoFocus
+          className="h-12 w-full rounded-xl bg-ink text-sm font-bold text-paper transition-colors active:bg-ink-light touch-manipulation"
+        >
+          Lanjutkan dalam layar penuh
+        </button>
       </div>
     </div>
   );

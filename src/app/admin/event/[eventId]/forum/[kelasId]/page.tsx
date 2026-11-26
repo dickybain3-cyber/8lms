@@ -9,7 +9,7 @@ import PanelForumKelas, {
 } from "./PanelForumKelas";
 import { Info, KepalaHalaman, Remah, TOMBOL_BIASA } from "@/components/ui/Panel";
 import type { PesanKutipan } from "@/components/forum/KutipanBalas";
-import { kelompokkanReaksi, type BarisReaksi } from "@/components/forum/ReaksiPesan";
+import { kelompokkanReaksi, type BarisReaksi } from "@/lib/forum";
 
 /**
  * Ruang obrolan SATU kelas di dalam sebuah forum.
@@ -103,7 +103,7 @@ export default async function ForumRuangKelasPage(
       supabase
         .from("forum_pesan")
         .select(
-          "id, siswa_id, guru_id, isi, jenis_isi, gambar_url, balas_ke_id, bonus_diberikan, created_at, siswa(nama), guru(nama), forum_reaksi(guru_id, emoji)"
+          "id, siswa_id, guru_id, isi, jenis_isi, gambar_url, balas_ke_id, bonus_diberikan, created_at, siswa(nama), guru!guru_id(nama), forum_reaksi(guru_id, emoji)"
         )
         .eq("forum_topik_id", topik.id)
         .eq("kelas_id", params.kelasId)

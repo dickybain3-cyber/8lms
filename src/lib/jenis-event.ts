@@ -34,7 +34,7 @@ import type { JenisEvent } from "@/types";
 export type { JenisEvent };
 
 /** Mesin penyimpanan konten di balik sebuah jenis kegiatan. */
-export type MesinKegiatan = "ujian" | "tugas" | "forum";
+export type MesinKegiatan = "ujian" | "tugas" | "forum" | "tryout";
 
 export interface DefinisiJenisEvent {
   value: JenisEvent;
@@ -112,6 +112,21 @@ export const DAFTAR_JENIS_EVENT: DefinisiJenisEvent[] = [
     siap: true,
     tahapRencana: null,
   },
+  {
+    value: "tryout",
+    label: "Tryout",
+    labelSiswa: "Tryout",
+    ikon: "flag-checkered",
+    deskripsi:
+      "Khusus kelas 9. Paket tryout berisi beberapa subtes; siswa masuk lewat link + token tanpa password.",
+    // Mesin sendiri (0029): subtes memang baris `mapel`, tapi dibuat lewat
+    // halaman /admin/tryout, bukan `createMapel`. `pakaiMesinUjian` false
+    // supaya penjaga `createMapel` tetap menolak mapel biasa di sini.
+    mesin: "tryout",
+    pakaiMesinUjian: false,
+    siap: true,
+    tahapRencana: null,
+  },
 ];
 
 const PETA_JENIS_EVENT: Record<JenisEvent, DefinisiJenisEvent> =
@@ -146,6 +161,11 @@ export function pakaiMesinForum(jenis: JenisEvent): boolean {
   return PETA_JENIS_EVENT[jenis].mesin === "forum";
 }
 
+/** Tryout kelas 9 (0029) — paket + subtes, dikelola di /admin/tryout. */
+export function pakaiMesinTryout(jenis: JenisEvent): boolean {
+  return PETA_JENIS_EVENT[jenis].mesin === "tryout";
+}
+
 /** false = halaman pengisian kontennya belum dibangun. Sejak Tahap 5,
  *  semua jenis event yang ada bernilai true — dipertahankan (bukan
  *  dihapus) supaya jenis event baru di masa depan punya jalan yang sama
@@ -175,5 +195,7 @@ export function istilahIsiKegiatan(jenis: JenisEvent): string {
       return "tugas";
     case "forum":
       return "topik diskusi";
+    case "tryout":
+      return "paket tryout";
   }
 }

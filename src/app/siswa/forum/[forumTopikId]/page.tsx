@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import FormChatForum, { type PesanForumSiswa } from "./FormChatForum";
 import type { PesanKutipan } from "@/components/forum/KutipanBalas";
-import { kelompokkanReaksi, type BarisReaksi } from "@/components/forum/ReaksiPesan";
+import { kelompokkanReaksi, type BarisReaksi } from "@/lib/forum";
 
 /**
  * Halaman forum untuk siswa. Pola sama persis dengan
@@ -66,7 +66,7 @@ export default async function ForumSiswaPage(
   const { data: pesanList } = await supabase
     .from("forum_pesan")
     .select(
-      "id, siswa_id, guru_id, isi, jenis_isi, gambar_url, balas_ke_id, created_at, siswa(nama), guru(nama), forum_reaksi(guru_id, emoji)"
+      "id, siswa_id, guru_id, isi, jenis_isi, gambar_url, balas_ke_id, created_at, siswa(nama), guru!guru_id(nama), forum_reaksi(guru_id, emoji)"
     )
     .eq("forum_topik_id", topik.id)
     .eq("kelas_id", siswa.kelas_id)

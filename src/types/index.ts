@@ -34,7 +34,8 @@ export type JenisEvent =
   | "asesmen_akhir"
   | "kuis_harian"
   | "assignment"
-  | "forum";
+  | "forum"
+  | "tryout";
 
 export interface Event {
   id: string;

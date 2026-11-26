@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { muatBarisSiswa } from "@/lib/sesi-middleware";
+import { bacaSesiSiswaMiddleware } from "@/lib/sesi-middleware-server";
 import ExamClient from "@/components/siswa/ujian/ExamClient";
 import { acakSoalUntukSiswa } from "@/lib/acak-soal";
 import type { SoalSiswa } from "@/types";
@@ -41,21 +43,26 @@ export default async function UjianPage(
   const params = await props.params;
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Identitas siswa dari middleware (sudah diperiksa untuk request ini, lihat
+  // `sesi-middleware.ts`); jatuh-mundur ke getUser bila tidak ada. Kueri
+  // mapel tidak bergantung pada siswa, jadi keduanya berjalan bersamaan.
+  const muatSiswa = async () => {
+    const dariMiddleware = await bacaSesiSiswaMiddleware();
+    if (dariMiddleware) return { id: dariMiddleware.siswa.id };
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    return user ? await muatBarisSiswa(supabase, user.id) : null;
+  };
 
-  const { data: siswa } = await supabase
-    .from("siswa")
-    .select("id")
-    .eq("auth_id", user?.id ?? "")
-    .maybeSingle();
-
-  const { data: mapel } = await supabase
-    .from("mapel")
-    .select("id, nama, waktu_mulai, waktu_selesai, durasi_menit")
-    .eq("id", params.mapelId)
-    .maybeSingle();
+  const [siswa, { data: mapel }] = await Promise.all([
+    muatSiswa(),
+    supabase
+      .from("mapel")
+      .select("id, nama, waktu_mulai, waktu_selesai, durasi_menit")
+      .eq("id", params.mapelId)
+      .maybeSingle(),
+  ]);
 
   if (!siswa || !mapel) {
     return (

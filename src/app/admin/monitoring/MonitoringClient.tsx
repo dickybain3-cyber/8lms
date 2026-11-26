@@ -238,6 +238,7 @@ export default function MonitoringClient({
             { header: "Dikumpulkan", key: "submit", lebar: 18, tengah: true },
             { header: "Skor", key: "skor", lebar: 10, tengah: true },
             { header: "Checkout", key: "checkout", lebar: 22, tengah: true },
+            { header: "Pelanggaran", key: "pelanggaran", lebar: 16, tengah: true },
           ],
           baris: baris.map((b) => ({
             nama: b.siswa_nama,
@@ -250,6 +251,9 @@ export default function MonitoringClient({
             submit: waktuExcel(b.submitted_at),
             skor: b.total_skor ?? "",
             checkout: teksCheckout(b),
+            pelanggaran: b.pelanggaran_terkunci
+              ? `${b.pelanggaran_jumlah} (terkunci)`
+              : b.pelanggaran_jumlah,
           })),
           sorotBaris: (r) => r.status === LABEL_STATUS.belum_mulai,
         },
@@ -696,6 +700,19 @@ function BarisSiswa({
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${GAYA_STATUS[b.status]}`}>
           {LABEL_STATUS[b.status]}
         </span>
+        {b.pelanggaran_jumlah > 0 && (
+          <span
+            title="Keluar layar penuh, pindah aplikasi, atau membagi layar"
+            className="mt-1.5 block w-fit rounded-full bg-danger/10 px-2 py-0.5 text-[0.7rem] font-bold text-danger"
+          >
+            <i
+              className={`fas ${b.pelanggaran_terkunci ? "fa-lock" : "fa-triangle-exclamation"} mr-1`}
+              aria-hidden
+            />
+            {b.pelanggaran_jumlah} pelanggaran
+            {b.pelanggaran_terkunci ? " · terkunci" : ""}
+          </span>
+        )}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">

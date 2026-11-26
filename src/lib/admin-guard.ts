@@ -2,6 +2,8 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getJenjangFromServerCookies } from "@/lib/jenjang-server";
 import type { Jenjang } from "@/lib/jenjang";
+import { muatBarisGuru } from "@/lib/sesi-middleware";
+import { bacaSesiGuruMiddleware } from "@/lib/sesi-middleware-server";
 
 /**
  * Siapa yang sedang login di panel /admin, dan sejauh apa haknya.
@@ -54,57 +56,41 @@ async function muatSesiGuru(): Promise<SesiGuru> {
     return sesiKosong(null);
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Jalur cepat: middleware baru saja memeriksa getUser + baris guru untuk
+  // request halaman ini dan meneruskannya lewat header (lihat
+  // `sesi-middleware.ts`). Hemat 2 round-trip ke Supabase per pindah menu.
+  // Server action / route handler tidak membawa header itu -> jalur lama.
+  const dariMiddleware = await bacaSesiGuruMiddleware();
 
-  if (!user) {
-    return sesiKosong(jenjang);
-  }
+  let email: string | null;
+  let guru: Awaited<ReturnType<typeof muatBarisGuru>>;
 
-  // RLS `guru_select_guru` mengizinkan guru membaca baris guru (termasuk
-  // barisnya sendiri), jadi ini tidak perlu service_role.
-  //
-  // Dua tahap, BUKAN satu select yang langsung memuat kolom baru:
-  // `foto_url` (migrasi 0016) belum tentu sudah ada di ketiga project.
-  // Kalau select-nya gagal karena satu kolom itu, hasilnya `guru = null`
-  // dan akun admin mendadak dianggap "bukan admin" — hanya karena sebuah
-  // foto profil. Jadi kalau select lengkap gagal, ulangi dengan kolom lama
-  // saja; foto dan username jadi kosong, sisanya persis seperti sebelum
-  // fitur profil ada.
-  type BarisGuru = {
-    id: string;
-    nama: string;
-    is_admin: boolean | null;
-    username?: string | null;
-    foto_url?: string | null;
-  };
-
-  let guru: BarisGuru | null = null;
-
-  const lengkap = await supabase
-    .from("guru")
-    .select("id, nama, is_admin, username, foto_url")
-    .eq("auth_id", user.id)
-    .maybeSingle();
-
-  if (!lengkap.error) {
-    guru = lengkap.data as BarisGuru | null;
+  if (dariMiddleware) {
+    email = dariMiddleware.email;
+    guru = dariMiddleware.guru;
   } else {
-    const lama = await supabase
-      .from("guru")
-      .select("id, nama, is_admin")
-      .eq("auth_id", user.id)
-      .maybeSingle();
-    guru = (lama.data as BarisGuru | null) ?? null;
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return sesiKosong(jenjang);
+    }
+
+    // RLS `guru_select_guru` mengizinkan guru membaca barisnya sendiri.
+    // `muatBarisGuru` jatuh-mundur bertahap bila kolom baru (foto_url,
+    // username, is_admin) belum dimigrasi di project ini, supaya akun
+    // admin tidak mendadak dianggap "bukan admin" hanya karena foto profil.
+    email = user.email ?? null;
+    guru = await muatBarisGuru(supabase, user.id);
   }
 
   return {
     jenjang,
     guruId: guru?.id ?? null,
     nama: guru?.nama ?? null,
-    email: user.email ?? null,
+    email,
     // `?? false` bukan cuma soal tipe: kalau migrasi 0011 belum dijalankan
     // di project ini, kolomnya belum ada dan kedua query di atas gagal
     // (guru jadi null) — hasilnya "bukan admin", yang merupakan default

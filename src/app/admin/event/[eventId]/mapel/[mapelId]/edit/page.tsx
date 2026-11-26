@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { cekMapelSudahDikerjakan } from "@/app/admin/event/actions";
 import MapelEditForm from "./MapelEditForm";
@@ -24,6 +24,16 @@ export default async function MapelEditPage(
   if (!mapel) {
     notFound();
   }
+
+  // Subtes tryout (0029) tidak punya kelas target/jadwal sendiri; diatur
+  // di halaman paket. Kolom bisa belum ada (kelas 7/8): gagal = abaikan.
+  const { data: tryoutRow } = await supabase
+    .from("mapel")
+    .select("tryout_paket_id")
+    .eq("id", params.mapelId)
+    .maybeSingle();
+  const paketTryout = (tryoutRow as { tryout_paket_id?: string | null } | null)?.tryout_paket_id;
+  if (paketTryout) redirect(`/admin/tryout/${params.eventId}/paket/${paketTryout}`);
 
   const eventInfo = mapel.event as unknown as {
     nama: string;

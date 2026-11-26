@@ -56,6 +56,7 @@ const MENU: (MenuTunggal | MenuGrup)[] = [
     ikon: "fa-calendar-days",
     anak: [
       { href: "/admin/event", label: "Kelola Kegiatan", ikon: "fa-calendar-check" },
+      { href: "/admin/tryout", label: "Tryout Kelas 9", ikon: "fa-flag-checkered" },
       // Bank Soal ditaruh di grup Kegiatan, tepat di bawah Kelola
       // Kegiatan — bukan sebagai menu tingkat atas sendiri. Alasannya
       // urutan kerja: guru membuka bank soal justru SAAT sedang
@@ -79,6 +80,15 @@ const MENU: (MenuTunggal | MenuGrup)[] = [
     href: "/admin/denah",
     label: "Tempat Duduk",
     ikon: "fa-chair",
+    adminSaja: true,
+  },
+  // Kode pembuka ujian yang terkunci karena pelanggaran (migrasi 0026).
+  // Berganti tiap 5 menit, beda per jenjang. Halamannya menolak non-admin.
+  {
+    jenis: "tunggal",
+    href: "/admin/kode-pengaman",
+    label: "Kode Pengaman",
+    ikon: "fa-shield-halved",
     adminSaja: true,
   },
   // Penghapusan permanen kegiatan/data siswa — admin saja. Halamannya

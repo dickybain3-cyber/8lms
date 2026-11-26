@@ -12,9 +12,7 @@ import BadgeJenjang from "@/components/admin/BadgeJenjang";
 import DeleteMapelButton from "./DeleteMapelButton";
 import DeleteSoalButton from "./DeleteSoalButton";
 import SkorInline from "./SkorInline";
-import AmbilDariBank from "@/components/admin/AiSoal/AmbilDariBank";
 import PilihanInputSoal from "@/components/admin/AiSoal/PilihanInputSoal";
-import ImporSoalJson from "@/components/admin/AiSoal/ImporSoalJson";
 import {
   BarisStatistik,
   Info,
@@ -44,6 +42,8 @@ type MapelRow = {
   waktu_mulai: string;
   waktu_selesai: string;
   eventNama: string;
+  /** Terisi = subtes tryout kelas 9 (0029). */
+  tryoutPaketId: string | null;
 };
 
 type SoalRow = {
@@ -85,6 +85,16 @@ async function muatDataMapel(
     .maybeSingle();
 
   if (!mapel) return null;
+
+  // Kolom 0029 belum tentu ada di project ini (kelas 7/8): dibaca terpisah,
+  // gagal = bukan tryout.
+  const { data: tryoutRow } = await client
+    .from("mapel")
+    .select("tryout_paket_id")
+    .eq("id", mapelId)
+    .maybeSingle();
+  const tryoutPaketId =
+    ((tryoutRow as { tryout_paket_id?: string | null } | null)?.tryout_paket_id ?? null) || null;
 
   const eventNama =
     (mapel.event as unknown as { nama: string } | null)?.nama ?? "Event";
@@ -129,6 +139,7 @@ async function muatDataMapel(
       waktu_mulai: mapel.waktu_mulai,
       waktu_selesai: mapel.waktu_selesai,
       eventNama,
+      tryoutPaketId,
     },
     soalList: (soalList ?? []) as SoalRow[],
     totalSkor,
@@ -190,7 +201,14 @@ async function IsiHalamanMapel({
         </div>
       )}
 
-      <Remah href={`/admin/event/${eventId}${qs}`} label={mapel.eventNama} />
+      {mapel.tryoutPaketId ? (
+        <Remah
+          href={`/admin/tryout/${eventId}/paket/${mapel.tryoutPaketId}`}
+          label={`${mapel.eventNama} · paket tryout`}
+        />
+      ) : (
+        <Remah href={`/admin/event/${eventId}${qs}`} label={mapel.eventNama} />
+      )}
 
       <KepalaHalaman
         judul={mapel.nama}
@@ -232,11 +250,15 @@ async function IsiHalamanMapel({
             {bisaEditHapusMapel && (
               <>
                 <Link
-                  href={`/admin/event/${eventId}/mapel/${mapelId}/edit`}
+                  href={
+                    mapel.tryoutPaketId
+                      ? `/admin/tryout/${eventId}/paket/${mapel.tryoutPaketId}`
+                      : `/admin/event/${eventId}/mapel/${mapelId}/edit`
+                  }
                   className={TOMBOL_BIASA}
                 >
                   <i className="fas fa-pen" aria-hidden />
-                  Edit Mapel
+                  {mapel.tryoutPaketId ? "Atur Subtes" : "Edit Mapel"}
                 </Link>
                 <DeleteMapelButton
                   eventId={eventId}
@@ -247,8 +269,6 @@ async function IsiHalamanMapel({
               </>
             )}
 
-            <AmbilDariBank mapelId={mapelId} mapelNama={mapel.nama} jenjang={jenjang} />
-            <ImporSoalJson eventId={eventId} mapelId={mapelId} mapelNama={mapel.nama} jenjang={jenjang} />
             <Link
               href={`/admin/event/${eventId}/mapel/${mapelId}/soal/baru${qs}`}
               className={TOMBOL_UTAMA}

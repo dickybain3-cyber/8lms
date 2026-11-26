@@ -251,7 +251,7 @@ function LencanaIsi({ event }: { event: EventAdmin }) {
   }
 
   const jumlah = def.mesin === "tugas" ? event.jumlah_tugas : event.jumlah_mapel;
-  const satuan = def.mesin === "tugas" ? "tugas" : "mapel";
+  const satuan = def.mesin === "tugas" ? "tugas" : def.mesin === "tryout" ? "subtes" : "mapel";
   const kosong = jumlah === 0;
 
   return (

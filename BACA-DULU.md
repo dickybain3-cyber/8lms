@@ -21,6 +21,7 @@ Kalau migrasi ini belum dijalankan, sisa aplikasi TETAP JALAN NORMAL —
 soal tetap tersimpan seperti biasa, hanya salinan ke banknya yang gagal
 diam-diam (disengaja; lihat catatan di `src/lib/bank-soal.ts`). Halaman
 Bank Soal akan tampil kosong dengan keterangan penyebabnya.
+ok
 
 Setelah itu: `npm run build` (atau restart `npm run dev`).
 
